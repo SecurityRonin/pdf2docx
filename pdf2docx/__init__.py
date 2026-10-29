@@ -7,7 +7,6 @@ from .writer import write as _write
 
 
 def convert(src, dst):
-    """Convert PDF `src` to DOCX `dst`, preserving headings and list structure."""
-    blocks = _classify(_lines(src))
-    _write(blocks, dst)
+    """Convert PDF `src` to DOCX `dst`, preserving headings, lists and footnotes."""
+    _write(_classify(_lines(src)), dst)
     return dst
