@@ -19,7 +19,8 @@ from .extract import Line
 SECTION = re.compile(r"^(?P<num>\d+(?:\.\d+)*)\.?(?P<rest>\s+\S.*)$")
 TERMINAL = (".", ";", ",", ":", "?", "!")
 BULLETS = "•▪◦‣·∙●■⁃–—"
-LIST_NUMBER = re.compile(r"^(?:\(?(\d{1,2}|[a-zA-Z])[.)])\s+")
+# "1." "a)" "(3)" "(b)" — a list label, with or without a closing bracket.
+LIST_NUMBER = re.compile(r"^(?:\(?(\d{1,2}|[a-zA-Z]{1,2})[.)])\s+")
 
 
 @dataclass
@@ -81,6 +82,20 @@ def list_body(text: str) -> str | None:
     if m:
         return t[m.end():].strip()
     return None
+
+
+def _lettered_label(text: str) -> bool:
+    """True for "(a) ..." / "a) ..." — a sub-item label, which is unambiguous.
+
+    Bare "1. Scope" is left alone: in reports that is the section numbering, and
+    reading it as a list would turn every section into a bullet.
+    """
+    t = text.strip()
+    m = LIST_NUMBER.match(t)
+    if not m:
+        return False
+    label = m.group(1)
+    return not label.isdigit()
 
 
 def _margin(lines: list[Line]) -> float:
@@ -168,7 +183,7 @@ def classify(lines: list[Line]) -> Doc:
             continue
         item = list_body(ln.text)
         bulleted = bool(ln.text.strip()[:1]) and ln.text.strip()[0] in BULLETS
-        numbered = item is not None and not bulleted and lists_ok
+        numbered = item is not None and not bulleted and (lists_ok or _lettered_label(ln.text))
         # An indented line below the body margin is a list item in its own right:
         # Word's own list styles indent the item and leave the glyph to numbering.
         indented = _is_indented(ln, margin, right) and not is_heading(ln, body, nxt)
