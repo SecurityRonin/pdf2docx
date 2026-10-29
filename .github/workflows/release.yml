@@ -229,7 +229,9 @@ jobs:
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
           certificate-profile-name: securityronin-public
-          files-folder: app/src-tauri/target/release/bundle
+          # Not the parent: this action does not recurse, and the MSI lives one
+          # level down in bundle/msi/.
+          files-folder: app/src-tauri/target/release/bundle/msi
           files-folder-filter: msi
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
@@ -242,7 +244,7 @@ jobs:
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
           certificate-profile-name: securityronin-public
-          files-folder: app/src-tauri/target/release/bundle
+          files-folder: app/src-tauri/target/release/bundle/nsis
           files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
