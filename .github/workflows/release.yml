@@ -1,0 +1,253 @@
+name: Release
+
+# Tag-driven: pushing `vX.Y.Z` builds, signs and publishes installers.
+#
+# Signing is gated so CI stays green before the credentials exist:
+#   - macOS  : skipped unless MACOS_CERT_P12_BASE64 is set
+#   - Windows: skipped unless AZURE_CLIENT_ID is set
+# See docs/SIGNING.md for what each secret is and how to obtain it.
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    # macos-14 is arm64, macos-13 is x86_64. PyInstaller cannot cross-compile,
+    # so each arch is frozen on a runner of that arch rather than lipo'd after.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: macos-13
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Verify the converter before packaging it
+        run: |
+          pip install reportlab
+          python -m pytest -q
+
+      - name: Freeze the conversion engine
+        run: ./app/scripts/build-engine.sh
+
+      - name: Build the app
+        run: |
+          cd app
+          npm ci
+          npx tauri build --target ${{ matrix.target }}
+
+      - name: Locate bundle
+        id: bundle
+        run: |
+          APP="app/src-tauri/target/${{ matrix.target }}/release/bundle/macos/PDF to DOCX.app"
+          test -d "$APP" || { echo "app bundle not found at $APP" >&2; exit 1; }
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+
+      # The sidecar is a second Mach-O inside Contents/MacOS. Signing INSIDE-OUT
+      # is required: notarization rejects a bundle whose nested code lacks a
+      # hardened-runtime signature, and --deep is not a reliable substitute.
+      - name: Sign (Developer ID + hardened runtime)
+        if: env.HAS_MACOS_SIGNING == 'true'
+        env:
+          CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          APP="${{ steps.bundle.outputs.app }}"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KCPW="$(uuidgen)"
+          security create-keychain -p "$KCPW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KCPW" "$KEYCHAIN"
+          echo "$CERT_P12_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/[",]//g' | xargs)
+
+          # 1. every nested Mach-O first (the sidecar engine, any bundled dylib)
+          find "$APP/Contents/MacOS" -type f -perm +111 | while read -r bin; do
+            if file "$bin" | grep -q "Mach-O"; then
+              echo "signing nested: $bin"
+              codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$bin"
+            fi
+          done
+          find "$APP" -name "*.dylib" -o -name "*.so" | while read -r lib; do
+            codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$lib"
+          done
+
+          # 2. then the bundle itself
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Notarize and staple the app
+        if: env.HAS_MACOS_SIGNING == 'true'
+        env:
+          NOTARY_KEY_BASE64: ${{ secrets.MACOS_NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP="${{ steps.bundle.outputs.app }}"
+          echo "$NOTARY_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$RUNNER_TEMP/notary.p8" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER_ID" \
+            --wait
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+
+      # Re-create the dmg AFTER stapling so the shipped image carries the ticket.
+      - name: Package dmg
+        run: |
+          set -euo pipefail
+          APP="${{ steps.bundle.outputs.app }}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          OUT="PDF2DOCX-${VERSION}-${{ matrix.target }}.dmg"
+          hdiutil create -volname "PDF to DOCX" -srcfolder "$APP" -ov -format UDZO "$OUT"
+          if [ "$HAS_MACOS_SIGNING" = "true" ]; then
+            codesign --force --timestamp --sign "${{ secrets.MACOS_SIGN_IDENTITY }}" "$OUT"
+          fi
+          echo "dmg=$OUT" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.target }}
+          path: ${{ env.dmg }}
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Verify the converter before packaging it
+        run: |
+          pip install reportlab
+          python -m pytest -q
+
+      - name: Freeze the conversion engine
+        shell: bash
+        run: ./app/scripts/build-engine.sh
+
+      - name: Build the app
+        shell: bash
+        run: |
+          cd app
+          npm ci
+          npx tauri build
+
+      # OIDC login FIRST: trusted-signing-action uses DefaultAzureCredential,
+      # which does NOT do the GitHub OIDC exchange itself. Without this the
+      # signer fails "AzureCliCredential: Please run 'az login'".
+      - name: Azure login (OIDC)
+        if: env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Authenticode is Windows' signing story; there is no notarization service
+      # on Windows — SmartScreen reputation is what the signature buys.
+      - name: Sign binaries (Azure Trusted Signing)
+        if: env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/trusted-signing-action@v2
+        with:
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: app/src-tauri/target/release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign installers (Azure Trusted Signing)
+        if: env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/trusted-signing-action@v2
+        with:
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: app/src-tauri/target/release/bundle
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Sign NSIS setup (Azure Trusted Signing)
+        if: env.HAS_AZURE_SIGNING == 'true'
+        uses: azure/trusted-signing-action@v2
+        with:
+          endpoint: https://neu.codesigning.azure.net
+          trusted-signing-account-name: securityronin
+          certificate-profile-name: securityronin-public
+          files-folder: app/src-tauri/target/release/bundle
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Collect installers
+        shell: bash
+        run: |
+          mkdir -p dist
+          find app/src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*-setup.exe' \) -exec cp {} dist/ \;
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*
+          if-no-files-found: error

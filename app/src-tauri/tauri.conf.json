@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PDF to DOCX",
+  "version": "0.1.0",
+  "identifier": "com.securityronin.pdf2docx",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PDF to DOCX",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 860,
+        "minHeight": 600,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "msi", "nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "externalBin": ["binaries/pdf2docx-engine"],
+    "category": "Productivity",
+    "shortDescription": "Convert PDF into a DOCX with real Word structure",
+    "longDescription": "Opens a PDF, previews it, and converts it into a DOCX that uses real heading styles, native list numbering and true footnotes rather than positioned text.",
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist",
+      "exceptionDomain": ""
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
+  }
+}

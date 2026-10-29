@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF to DOCX</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <aside class="rail">
+        <header class="brand">
+          <h1>PDF to DOCX</h1>
+          <p class="sub">Real headings, numbering and footnotes</p>
+        </header>
+
+        <section class="actions">
+          <button id="open" class="primary">Open PDF…</button>
+          <button id="convert" class="secondary" disabled>Convert</button>
+          <button id="reveal" class="ghost" hidden>Show file</button>
+        </section>
+
+        <section id="status" class="status" aria-live="polite">
+          <p class="muted">Open a PDF to begin, or drop one on the window.</p>
+        </section>
+
+        <footer class="foot">
+          <span id="engine" class="engine"></span>
+        </footer>
+      </aside>
+
+      <section class="stage">
+        <div id="dropzone" class="dropzone">
+          <p>Drop a PDF here</p>
+        </div>
+        <div id="pages" class="pages" hidden></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

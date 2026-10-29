@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Development engine: run the in-repo converter without freezing it.
+#
+# The app resolves its engine from $PDF2DOCX_ENGINE when set, so pointing that
+# at this script exercises the tested Python directly instead of a stale copy.
+#
+# Failures must reach the app: stderr is NOT discarded here, because a silent
+# exit would surface in the UI as "engine reported success but wrote nothing".
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+export PYTHONPATH="$repo${PYTHONPATH:+:$PYTHONPATH}"
+exec "${PYTHON:-python3}" -m pdf2docx "$@"
