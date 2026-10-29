@@ -70,6 +70,18 @@ def _clear(document) -> None:
             for el in list(sect.iter(qn(tag))):
                 el.getparent().remove(el)
 
+    # The template's Heading 1 starts a new page (report chapters do). A
+    # conversion is one continuous document, so that behaviour would split the
+    # output into extra pages the source never had.
+    styles = document.styles.element
+    for style in styles.iter(qn("w:style")):
+        ppr = style.find(qn("w:pPr"))
+        if ppr is None:
+            continue
+        brk = ppr.find(qn("w:pageBreakBefore"))
+        if brk is not None:
+            ppr.remove(brk)
+
 
 def _para(text: str, style: str | None = None, size: float | None = None,
           bold: bool = False, italic: bool = False):
@@ -174,7 +186,35 @@ def _attach_mark(paragraph, nid: int) -> None:
     paragraph._p.append(run)
 
 
-def write(doc: Doc, dst) -> None:
+def _apply_page(document, prof) -> None:
+    """Match the source page box and margins, so the page looks like the PDF."""
+    from docx.shared import Mm  # noqa: F401  (kept for callers passing units)
+
+    for section in document.sections:
+        section.page_width = Pt(prof.page_width)
+        section.page_height = Pt(prof.page_height)
+        section.left_margin = Pt(max(0, prof.left_margin))
+        section.right_margin = Pt(max(0, prof.right_margin))
+        section.top_margin = Pt(max(0, prof.top_margin))
+        section.bottom_margin = Pt(max(0, prof.bottom_margin))
+
+
+def _apply_typography(document, prof) -> None:
+    """Font, size, leading and justification, taken from the source itself."""
+    normal = document.styles["Normal"]
+    _set_body_font(document, prof.font_family)
+    normal.font.size = Pt(prof.body_size)
+    pf = normal.paragraph_format
+    pf.line_spacing = prof.line_spacing
+    pf.space_before = Pt(0)
+    pf.space_after = Pt(0)
+    if prof.justified:
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+
+
+def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
     tpl = template_path()
     document = docx.Document(str(tpl)) if tpl.exists() else docx.Document()
     _clear(document)
@@ -182,7 +222,8 @@ def write(doc: Doc, dst) -> None:
 
     for b in doc.blocks:
         if b.kind == "heading":
-            p = _add(document, b.text, f"Heading {min(6, max(1, b.level))}", b)
+            style = "Title" if b.level == 0 else f"Heading {min(6, max(1, b.level))}"
+            p = _add(document, b.text, style, b)
         elif b.kind == "list_item":
             p = _add(document, b.text, "List Bullet", b)
             _apply_numbering(p, BULLET_NUM_ID, max(0, (b.level or 1) - 1))
@@ -190,14 +231,19 @@ def write(doc: Doc, dst) -> None:
             p = _add(document, b.text, None, b)
         if b.marker and notes_part is not None and b.marker in doc.notes:
             _attach_mark(p, _add_note(notes_part, doc.notes[b.marker]))
+        if layout == "faithful" and getattr(b, "page_break_before", False):
+            p.paragraph_format.page_break_before = True
 
     if notes_part is not None:
-        from lxml import etree
         notes_part._blob = notes_part.blob  # keep lxml bytes, not a tree
 
-    _set_body_font(document)
-    body_sizes = [b.size for b in doc.blocks if b.kind == "body" and b.size]
-    if body_sizes:
-        document.styles["Normal"].font.size = Pt(max(body_sizes))
+    if prof is not None:
+        _apply_typography(document, prof)
+        _apply_page(document, prof)
+    else:
+        _set_body_font(document)
+        body_sizes = [b.size for b in doc.blocks if b.kind == "body" and b.size]
+        if body_sizes:
+            document.styles["Normal"].font.size = Pt(max(body_sizes))
 
     document.save(str(dst))

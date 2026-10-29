@@ -98,8 +98,9 @@ async function convert() {
     return;
   }
 
+  const layout = $<HTMLSelectElement>("layout").value;
   try {
-    const r = await invoke<Report>("convert", { src: currentPath, dst });
+    const r = await invoke<Report>("convert", { src: currentPath, dst, layout });
     lastOut = r.out_path;
     revealBtn.hidden = false;
     engineEl.textContent = `engine: ${r.engine}`;

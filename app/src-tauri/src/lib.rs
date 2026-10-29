@@ -50,7 +50,11 @@ fn engine_command() -> (String, Vec<String>, &'static str) {
 }
 
 #[tauri::command]
-fn convert(src: String, dst: Option<String>) -> Result<ConversionReport, String> {
+fn convert(
+    src: String,
+    dst: Option<String>,
+    layout: Option<String>,
+) -> Result<ConversionReport, String> {
     let src_path = PathBuf::from(&src);
     if !src_path.exists() {
         return Err(format!("no such file: {src}"));
@@ -63,6 +67,7 @@ fn convert(src: String, dst: Option<String>) -> Result<ConversionReport, String>
     let mut cmd = Command::new(&program);
     cmd.args(&prefix);
     cmd.arg(&src_path).arg(&dst_path);
+    cmd.args(["--layout", layout.as_deref().unwrap_or("semantic")]);
     cmd.env("PDF2DOCX_QUIET", "1");
 
     let output = cmd

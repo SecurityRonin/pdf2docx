@@ -20,6 +20,17 @@
           <button id="reveal" class="ghost" hidden>Show file</button>
         </section>
 
+        <section class="mode">
+          <label class="mode-label" for="layout">Layout</label>
+          <select id="layout">
+            <option value="semantic">Semantic — reflows, better to edit</option>
+            <option value="faithful">Faithful — keeps page breaks</option>
+          </select>
+          <p class="muted hint" id="modehint">
+            Real headings, numbering and footnotes either way.
+          </p>
+        </section>
+
         <section id="status" class="status" aria-live="polite">
           <p class="muted">Open a PDF to begin, or drop one on the window.</p>
         </section>

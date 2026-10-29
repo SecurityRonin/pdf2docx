@@ -32,6 +32,8 @@ class Block:
     bold: bool = False
     italic: bool = False
     marker: str = ""   # footnote mark that follows this block's text
+    page: int = 0
+    page_break_before: bool = False
 
 
 @dataclass
@@ -160,7 +162,13 @@ def _collect_notes(lines: list[Line]) -> dict[str, str]:
     return notes
 
 
-def classify(lines: list[Line]) -> Doc:
+def classify(lines: list[Line], join: bool = True) -> Doc:
+    """Classify lines into blocks.
+
+    `join=True` merges wrapped lines into paragraphs so the text reflows in
+    Word (semantic mode). `join=False` keeps one block per visual line, which
+    is what faithful mode needs to pin the layout.
+    """
     body = body_size(lines)
     notes = _collect_notes(lines)
     lists_ok = _intro_marks_lists(lines)
@@ -170,16 +178,27 @@ def classify(lines: list[Line]) -> Doc:
     content = [ln for ln in lines if not ln.in_note_zone
                and not re.fullmatch(r"[-–—_ ]{4,}", ln.text.strip())]
 
+    seen_numbered = False
+    prev_page = None
     for i, ln in enumerate(content):
         nxt = content[i + 1] if i + 1 < len(content) else None
         marker = ln.marker if ln.marker in notes else ""
+        new_page = prev_page is not None and ln.page != prev_page
+        prev_page = ln.page
+
         if is_heading(ln, body, nxt):
             m = SECTION.match(ln.text)
             if m:
+                seen_numbered = True
                 level, text = section_depth(m.group("num")), m.group("rest").strip()
             else:
-                level, text = 1, ln.text.strip()
-            doc.blocks.append(Block("heading", text, level, ln.size, ln.bold, ln.italic, marker))
+                text = ln.text.strip()
+                # An unnumbered heading before the first numbered section is the
+                # document's title. Giving it Heading 1 would make Word number it
+                # "1" and push every real section down by one.
+                level = 0 if not seen_numbered and not doc.blocks else 1
+            doc.blocks.append(Block("heading", text, level, ln.size, ln.bold, ln.italic,
+                                    marker, ln.page, new_page))
             continue
         item = list_body(ln.text)
         bulleted = bool(ln.text.strip()[:1]) and ln.text.strip()[0] in BULLETS
@@ -189,10 +208,55 @@ def classify(lines: list[Line]) -> Doc:
         indented = _is_indented(ln, margin, right) and not is_heading(ln, body, nxt)
         if indented:
             doc.blocks.append(Block("list_item", (item if item is not None else ln.text.strip()),
-                                    1, ln.size, ln.bold, ln.italic, marker))
+                                    1, ln.size, ln.bold, ln.italic, marker, ln.page, new_page))
             continue
         if item is not None and (bulleted or numbered):
-            doc.blocks.append(Block("list_item", item, 1, ln.size, ln.bold, ln.italic, marker))
+            doc.blocks.append(Block("list_item", item, 1, ln.size, ln.bold, ln.italic,
+                                    marker, ln.page, new_page))
             continue
-        doc.blocks.append(Block("body", ln.text, 0, ln.size, ln.bold, ln.italic, marker))
+        doc.blocks.append(Block("body", ln.text, 0, ln.size, ln.bold, ln.italic,
+                                marker, ln.page, new_page))
+
+    if join:
+        doc.blocks = _join_paragraphs(doc.blocks, right, margin)
     return doc
+
+
+def _continued(prev: Block, cur: Block, right: float, margin: float) -> bool:
+    """Does `cur` continue the paragraph started by `prev`?
+
+    A wrapped line differs from a new paragraph in one reliable way: the line
+    above it ran on to the right measure. A paragraph's last line is short.
+    """
+    if prev.kind != "body" or cur.kind != "body":
+        return False
+    if prev.page != cur.page:
+        return False
+    if abs((prev.size or 0) - (cur.size or 0)) > 0.6:
+        return False
+    if right and margin and (right - margin) > 0:
+        measure = right - margin
+        filled = (len(prev.text) * (prev.size or 10) * 0.5)
+        if filled < measure * 0.75:
+            return False
+    # a sentence that ended is a paragraph that ended
+    return not prev.text.rstrip().endswith((".", "!", "?", ":", ";"))
+
+
+def _join_paragraphs(blocks: list[Block], right: float, margin: float) -> list[Block]:
+    """Merge wrapped body lines so Word reflows the text as paragraphs."""
+    out: list[Block] = []
+    for b in blocks:
+        if out and _continued(out[-1], b, right, margin):
+            prev = out[-1]
+            joined = prev.text.rstrip()
+            nxt = b.text.lstrip()
+            if joined.endswith("-") and nxt[:1].islower():
+                prev.text = joined[:-1] + nxt      # de-hyphenate a wrapped word
+            else:
+                prev.text = joined + " " + nxt
+            if b.marker:
+                prev.marker = b.marker
+        else:
+            out.append(b)
+    return out
