@@ -424,8 +424,10 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
                 pf.space_before = Pt(max(0.0, min(extra, 200)))
             else:
                 pf.space_before = Pt(0)
-            if getattr(b, "page_break_before", False):
-                pf.page_break_before = True
+            # No forced page breaks. When the typography matches, Word breaks at
+            # the same place by itself; forcing a break as well fires on top of
+            # a natural one and leaves a nearly empty page behind it (a 2-page
+            # document came back as 4 pages: 2640, 338, 3962, 193 characters).
             prev_height = height
         prev_top = b.top if b.kind in ("body", "heading", "list_item") else None
         prev_page = b.page
