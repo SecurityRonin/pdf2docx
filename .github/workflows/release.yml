@@ -31,7 +31,7 @@ jobs:
     env:
       HAS_MACOS_SIGNING: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - uses: actions/setup-node@v4
         with:
@@ -139,7 +139,7 @@ jobs:
           fi
           echo "dmg=$OUT" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-${{ matrix.target }}
           path: ${{ env.dmg }}
@@ -154,7 +154,7 @@ jobs:
     env:
       HAS_AZURE_SIGNING: ${{ secrets.AZURE_CLIENT_ID != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - uses: actions/setup-node@v4
         with:
@@ -192,7 +192,7 @@ jobs:
       # signer fails "AzureCliCredential: Please run 'az login'".
       - name: Azure login (OIDC)
         if: env.HAS_AZURE_SIGNING == 'true'
-        uses: azure/login@v3
+        uses: azure/login@93381592711f247e165c389ebb30b596c84cdc48 # v3.0.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -202,7 +202,7 @@ jobs:
       # on Windows — SmartScreen reputation is what the signature buys.
       - name: Sign binaries (Azure Trusted Signing)
         if: env.HAS_AZURE_SIGNING == 'true'
-        uses: azure/trusted-signing-action@v2
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
@@ -215,7 +215,7 @@ jobs:
 
       - name: Sign installers (Azure Trusted Signing)
         if: env.HAS_AZURE_SIGNING == 'true'
-        uses: azure/trusted-signing-action@v2
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
@@ -228,7 +228,7 @@ jobs:
 
       - name: Sign NSIS setup (Azure Trusted Signing)
         if: env.HAS_AZURE_SIGNING == 'true'
-        uses: azure/trusted-signing-action@v2
+        uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
           endpoint: https://neu.codesigning.azure.net
           trusted-signing-account-name: securityronin
@@ -246,7 +246,7 @@ jobs:
           find app/src-tauri/target/release/bundle -type f \( -name '*.msi' -o -name '*-setup.exe' \) -exec cp {} dist/ \;
           ls -la dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x86_64
           path: dist/*
@@ -300,7 +300,7 @@ jobs:
       HAS_TAP: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         if: env.HAS_TAP == 'true'
         with:
           repository: SecurityRonin/homebrew-tap
