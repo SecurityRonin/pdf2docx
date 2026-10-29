@@ -59,12 +59,17 @@ def is_heading(ln: Line, body: float, nxt: Line | None) -> bool:
     if ln.text.endswith(TERMINAL):
         return False
     bigger = ln.size >= body * 1.04
-    numbered = bool(SECTION.match(ln.text))
-    if not (bigger or (ln.bold and (numbered or len(ln.text.split()) <= 10))):
+    m = SECTION.match(ln.text)
+    numbered = bool(m) and (bigger or (ln.bold and _is_short_title(ln, m)))
+    if not (bigger or numbered):
         return False
-    if bigger or numbered:
-        return True
-    return nxt is not None and (nxt.size < ln.size or nxt.top - ln.top > ln.size * 1.7)
+    return True
+
+
+def _is_short_title(ln: Line, m) -> bool:
+    """A numbered title carries its section number and does not run on as prose."""
+    rest = m.group("rest").strip()
+    return len(rest) <= 90 and len(rest.split()) <= 12
 
 
 def list_body(text: str) -> str | None:
