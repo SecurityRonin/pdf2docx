@@ -21,14 +21,15 @@ only in whether the text reflows:
 
 Measured against the source, rendered through LibreOffice:
 
-| Document | Pages | semantic | faithful |
-|---|---|---|---|
-| CLLMSP Handbook | 26 | 0.73× | **1.00×** |
-| Expert Report | 14 | 0.71× | 1.14× |
+| Document | Pages | semantic | faithful | page openings that match |
+|---|---|---|---|---|
+| CLLMSP Handbook | 26 | 0.73× | **1.00×** | 26/26 |
+| Expert Report | 14 | 0.64× | **1.00×** | 12/14 |
 
-Page size, body size and margins match in both. Faithful is close to
-page-identical but *not* exact — the court report over-runs by two pages
-because its tables are flattened to text.
+Page count is exact on both. Page size, body size, font and margins match in
+both modes. The two remaining opening mismatches are classification, not
+layout: a table header cell whose text reorders, and a lettered sub-item
+`(c)` emitted as a bullet.
 
 ## What it produces
 
