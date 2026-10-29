@@ -1,9 +1,10 @@
-research/or_models.json
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
 research/*.docx
 research/*.pdf
 research/x/
 research/y/
-__pycache__/
-*.pyc
-.pytest_cache/
+research/or_models.json
 corpus/
