@@ -19,6 +19,7 @@ class Line:
     text: str
     size: float
     x0: float
+    x1: float
     top: float
     bold: bool
     italic: bool
@@ -80,6 +81,7 @@ def lines(pdf_path, note_zone: float = 0.75) -> list[Line]:
                         text=body_text,
                         size=round(median, 1),
                         x0=min(c["x0"] for c in chars),
+                        x1=max(c["x1"] for c in chars),
                         top=ln["top"],
                         bold=_is_bold(chars[0].get("fontname", "")),
                         italic=_is_italic(chars[0].get("fontname", "")),

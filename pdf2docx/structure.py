@@ -79,9 +79,17 @@ def list_body(text: str) -> str | None:
 
 
 def _margin(lines: list[Line]) -> float:
-    """Left edge of unindented body text: the most common x0 of non-note lines."""
-    xs = Counter(round(ln.x0) for ln in lines if not ln.in_note_zone)
-    return float(xs.most_common(1)[0][0]) if xs else 0.0
+    """Left edge of unindented body text.
+
+    Measured by characters, not by line count: a page of short list items
+    outnumbers its prose lines, so a modal x0 reports the list indent as the
+    margin and then every list item looks flush.
+    """
+    weight = Counter()
+    for ln in lines:
+        if not ln.in_note_zone:
+            weight[round(ln.x0)] += len(ln.text)
+    return float(weight.most_common(1)[0][0]) if weight else 0.0
 
 
 def _intro_marks_lists(lines: list[Line]) -> bool:
@@ -94,9 +102,29 @@ def _intro_marks_lists(lines: list[Line]) -> bool:
 
 
 INDENT_PT = 8.0   # a list item is set in from the body margin by at least this
+SHORT_LINE = 0.62  # ...and does not run on to the right margin like prose
 
 
-def _is_indented(ln: Line, margin: float) -> bool:
+def _right_edge(lines: list[Line]) -> float:
+    """Typical right edge of a full line, i.e. the measure the text is set to."""
+    edges = [ln.x1 for ln in lines if not ln.in_note_zone and ln.x1]
+    if not edges:
+        return 0.0
+    edges.sort()
+    return edges[int(len(edges) * 0.9)]
+
+
+def _is_indented(ln: Line, margin: float, right: float) -> bool:
+    """Indented, and shorter than a full measure.
+
+    Indent alone is not enough: justified body text starts its continuation
+    lines at the margin while the first line of each paragraph varies, so an
+    offset from the modal x0 is mostly inter-word spacing, not a list.
+    """
+    if ln.x1 and right:
+        width = ln.x1 - margin
+        if width >= (right - margin) * SHORT_LINE:
+            return False
     return ln.x0 - margin >= INDENT_PT
 
 
@@ -117,6 +145,7 @@ def classify(lines: list[Line]) -> Doc:
     notes = _collect_notes(lines)
     lists_ok = _intro_marks_lists(lines)
     margin = _margin(lines)
+    right = _right_edge(lines)
     doc = Doc(notes=notes)
     content = [ln for ln in lines if not ln.in_note_zone
                and not re.fullmatch(r"[-–—_ ]{4,}", ln.text.strip())]
@@ -137,7 +166,7 @@ def classify(lines: list[Line]) -> Doc:
         numbered = item is not None and not bulleted and lists_ok
         # An indented line below the body margin is a list item in its own right:
         # Word's own list styles indent the item and leave the glyph to numbering.
-        indented = _is_indented(ln, margin) and not is_heading(ln, body, nxt)
+        indented = _is_indented(ln, margin, right) and not is_heading(ln, body, nxt)
         if indented:
             doc.blocks.append(Block("list_item", (item if item is not None else ln.text.strip()),
                                     1, ln.size, ln.bold, ln.italic, marker))
