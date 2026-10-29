@@ -291,20 +291,23 @@ jobs:
   homebrew:
     needs: publish
     runs-on: ubuntu-latest
-    # A job-level `if:` cannot read `secrets`; that fails the whole workflow at
-    # parse time (which is exactly what happened: the run failed in 0s). The
-    # secret is lifted into job env and the condition tests that instead.
+    # A job-level `if:` cannot read `secrets` OR `env`. GitHub documents the
+    # contexts for jobs.<id>.if as github, needs, vars and inputs only; a
+    # condition on a secret there rejects the whole file at parse time (the run
+    # fails in 0 seconds with "workflow file issue"). So the secret is read into
+    # job env and each step tests `env`, which step-level `if` does support.
     env:
       HAS_TAP: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
-    if: ${{ env.HAS_TAP == 'true' }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        if: env.HAS_TAP == 'true'
         with:
           repository: SecurityRonin/homebrew-tap
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
           path: tap
       - name: Write the cask
+        if: env.HAS_TAP == 'true'
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -324,6 +327,7 @@ jobs:
           end
           RUBY
       - name: Commit and push
+        if: env.HAS_TAP == 'true'
         run: |
           cd tap
           git config user.name  "securityronin-bot"
