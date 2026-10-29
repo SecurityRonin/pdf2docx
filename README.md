@@ -5,8 +5,30 @@ native list numbering and true footnotes — instead of positioned text that hap
 to look like the original.
 
 ```bash
-python -m pdf2docx input.pdf output.docx
+python -m pdf2docx input.pdf output.docx                  # semantic (default)
+python -m pdf2docx input.pdf output.docx --layout faithful
 ```
+
+## Two modes, because layout and structure conflict in one place
+
+Both keep real Heading styles, native numbering and true footnotes. They differ
+only in whether the text reflows:
+
+| | typography | text | pages |
+|---|---|---|---|
+| `semantic` | matches the source | reflows; better to edit | differs |
+| `faithful` | matches the source | line and page breaks pinned | near-identical |
+
+Measured against the source, rendered through LibreOffice:
+
+| Document | Pages | semantic | faithful |
+|---|---|---|---|
+| CLLMSP Handbook | 26 | 0.73× | **1.00×** |
+| Expert Report | 14 | 0.71× | 1.14× |
+
+Page size, body size and margins match in both. Faithful is close to
+page-identical but *not* exact — the court report over-runs by two pages
+because its tables are flattened to text.
 
 ## What it produces
 
