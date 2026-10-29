@@ -135,6 +135,83 @@ def _place(pf, b, prof) -> None:
         pf.left_indent = Pt(0)
 
 
+def _resolve_font(family: str):
+    """The face to set the document in: the source font, its clone, or the nearest.
+
+    Returns (family_name, path_or_None). A None path means nothing readable was
+    found and no fitting is possible.
+    """
+    from . import fonts as F
+
+    table = F.installed()
+    if not table:
+        return family, None
+    key = (family or "").strip().lower()
+    # The DOCX always names the SOURCE family. Renaming it to a clone makes the
+    # renderer substitute for a face it cannot see, which measured worse: text
+    # similarity fell from 99% to 83%. The clone is used to know the right
+    # metrics, not to change what the document says it is set in.
+    path = None
+    if key in table:
+        path = table[key]
+    else:
+        sub = F.substitute_for(family)
+        if sub and sub.lower() in table:
+            path = table[sub.lower()]
+        else:
+            pick = F.closest(family, list(table))
+            path = table[pick.lower()] if pick else None
+    return family, path
+
+
+def _set_tracking(run, points: float) -> None:
+    """Character spacing, in twips. python-docx has no API for it."""
+    if abs(points) < 0.01:
+        return
+    rpr = run._element.get_or_add_rPr()
+    spacing = rpr.find(qn("w:spacing"))
+    if spacing is None:
+        spacing = OxmlElement("w:spacing")
+        rpr.append(spacing)
+    spacing.set(qn("w:val"), str(int(round(points * TWIPS))))
+
+
+def _fit_line(p, b, prof, font_path) -> None:
+    """Make the line occupy the width the source gave it.
+
+    A substitute face has different advance widths, so every word after the
+    first lands somewhere else. Tracking closes a small difference; a large one
+    means the face is wrong and the size carries it. This is what stops an
+    inexact font from spilling a page.
+    """
+    if not font_path or not b.text or not b.x1 or not b.x0:
+        return
+    target = b.x1 - b.x0
+    size = b.size or (prof.body_size if prof else 12.0)
+    if target <= 0 or size <= 0:
+        return
+    # Never fit a line flush to the measure: a line that lands exactly on the
+    # edge wraps at the first rounding, and one wrap per page is enough to push
+    # a document onto an extra page (52 lines where the source had 50).
+    if prof is not None:
+        available = prof.page_width - prof.left_margin - prof.right_margin
+        indent = b.x0 - prof.left_margin
+        if indent > 0:
+            available -= indent
+        if available > 0:
+            target = min(target, available * 0.99)
+    from . import fonts as F
+
+    try:
+        fit = F.plan(font_path, b.text, size, target)
+    except Exception:
+        return
+    for run in p.runs:
+        if fit.size_scale != 1.0:
+            run.font.size = Pt(round(size * fit.size_scale, 2))
+        _set_tracking(run, fit.tracking_pt)
+
+
 def _suppress_numbering(p) -> None:
     """numId 0 is Word's way of saying 'this paragraph is not numbered'."""
     ppr = p._p.get_or_add_pPr()
@@ -379,6 +456,10 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
     prev_top = None      # last text line's top on the current page, for spacing
     prev_page = None
     prev_height = 0.0    # that line's own height, for the gap calculation
+    font_path = None
+    if prof is not None:
+        family, font_path = _resolve_font(prof.font_family)
+        _set_body_font(document, family)
     for b in doc.blocks:
         if b.kind == "table" and b.table is not None:
             _add_table(document, b.table)
@@ -419,6 +500,7 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
             pf.line_spacing = Pt(height)
             if not os.environ.get("PDF2DOCX_NO_PLACE"):
                 _place(pf, b, prof)
+            _fit_line(p, b, prof, font_path)
             if prev_top is not None and prev_page == b.page and b.top > 0:
                 extra = (b.top - prev_top) - prev_height
                 pf.space_before = Pt(max(0.0, min(extra, 200)))

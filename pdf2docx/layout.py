@@ -167,8 +167,11 @@ def profile(pdf_path) -> LayoutProfile:
     # the minimum x0 on any page picks up a footer or a wide element, and every
     # line is then indented by the difference — which narrows the column and
     # makes previously single-line paragraphs wrap, adding pages.
-    left = float(body_lefts.most_common(1)[0][0]) if body_lefts else (
-        min(lefts) if lefts else 72.0)
+    # The text block is the actual extent of body text: the leftmost start and
+    # the rightmost end. A modal or percentile choice narrows the measure, and a
+    # narrower measure wraps lines that fitted in the source — which is what
+    # pushes a two-page document onto a third page.
+    left = float(min(body_lefts)) if body_lefts else (min(lefts) if lefts else 72.0)
     top = min(tops) if tops else 72.0
 
     # Take a high percentile, not the maximum: one stray element (a rule, a
