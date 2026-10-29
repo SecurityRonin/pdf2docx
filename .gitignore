@@ -1,0 +1,9 @@
+research/or_models.json
+research/*.docx
+research/*.pdf
+research/x/
+research/y/
+__pycache__/
+*.pyc
+.pytest_cache/
+corpus/
