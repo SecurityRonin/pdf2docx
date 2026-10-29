@@ -185,7 +185,7 @@ jobs:
         run: |
           cd app
           npm ci
-          npx tauri build
+          npx tauri build --bundles msi,nsis
 
       # OIDC login FIRST: trusted-signing-action uses DefaultAzureCredential,
       # which does NOT do the GitHub OIDC exchange itself. Without this the
@@ -213,7 +213,17 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      - name: Detect installers
+        id: installers
+        shell: bash
+        run: |
+          B=app/src-tauri/target/release/bundle
+          echo "has_msi=$([ -n "$(find "$B" -name '*.msi' -print -quit 2>/dev/null)" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_nsis=$([ -n "$(find "$B" -name '*-setup.exe' -print -quit 2>/dev/null)" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          find "$B" -maxdepth 3 -type f | sort | head -20
+
       - name: Sign installers (Azure Trusted Signing)
+        if: env.HAS_AZURE_SIGNING == 'true' && steps.installers.outputs.has_msi == 'true'
         if: env.HAS_AZURE_SIGNING == 'true'
         uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
@@ -227,7 +237,7 @@ jobs:
           timestamp-digest: SHA256
 
       - name: Sign NSIS setup (Azure Trusted Signing)
-        if: env.HAS_AZURE_SIGNING == 'true'
+        if: env.HAS_AZURE_SIGNING == 'true' && steps.installers.outputs.has_nsis == 'true'
         uses: azure/trusted-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
         with:
           endpoint: https://neu.codesigning.azure.net
