@@ -43,3 +43,27 @@ def numbered_pdf(tmp_path):
     c.showPage()
     c.save()
     return out
+
+
+@pytest.fixture
+def footnote_pdf(tmp_path):
+    """A paragraph carrying one superscript footnote mark and its note text."""
+    out = tmp_path / "footnote.pdf"
+    c = canvas.Canvas(str(out), pagesize=A4)
+    y = H - 80
+    c.setFont("Helvetica", 12)
+    c.drawString(60, y, "The witness statement was signed on 12 March.")
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    x = 60 + stringWidth("The witness statement was signed on 12 March.", "Helvetica", 12)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.setFont("Helvetica", 7)
+    c.drawString(x + 1, y + 4, "1")          # raised: the footnote mark
+    c.setFillColorRGB(0, 0, 0)
+    # the note itself, below a separator, smaller than body text
+    c.setFont("Helvetica", 14)
+    c.drawString(60, 120, "—" * 12)
+    c.setFont("Helvetica", 8)
+    c.drawString(60, 106, "1  Statement of A. Example, 12 March 2026, paragraph 4.")
+    c.showPage()
+    c.save()
+    return out
