@@ -71,10 +71,25 @@ def test_rendered_text_is_not_glyph_corrupted(numbered_pdf, tmp_path):
 
 
 def test_bullets_actually_render(numbered_pdf, tmp_path):
+    """A list item must carry a marker before its text.
+
+    Asserted as a rule, not a glyph list. A bullet may be U+2022, one of several
+    dots, or a Private-Use character from the Symbol font (LibreOffice rendered
+    \uf0b7 here) depending on the numbering definition — an enumerated set of
+    glyphs missed a case that was working correctly.
+    """
     out = tmp_path / "out.docx"
     convert(numbered_pdf, out)
     pdf = _render(out, tmp_path / "render")
     with pdfplumber.open(pdf) as p:
         text = "\n".join((pg.extract_text() or "") for pg in p.pages)
-    assert "Mail server" in text
-    assert any(g in text for g in ("•", "▪", "◦", "‣", "·")), text
+
+    checked = 0
+    for line in text.splitlines():
+        for item in ("Mail server", "File server", "Directory service"):
+            if item in line:
+                prefix = line.split(item)[0]
+                assert prefix.strip(), f"no bullet marker on {line!r}"
+                assert not prefix.strip()[0].isalnum(), f"marker is text: {line!r}"
+                checked += 1
+    assert checked >= 3, f"list items not found in rendered output: {text!r}"

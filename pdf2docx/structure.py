@@ -118,17 +118,15 @@ def _lettered_label(text: str) -> bool:
 
 
 def _margin(lines: list[Line]) -> float:
-    """Left edge of unindented body text.
+    """Left edge of the body text block: the leftmost line start.
 
-    Measured by characters, not by line count: a page of short list items
-    outnumbers its prose lines, so a modal x0 reports the list indent as the
-    margin and then every list item looks flush.
+    Not the modal x0: a page of short list items outnumbers its prose lines, so
+    the mode reports the list indent as the margin and then nothing looks
+    indented — which is how bullets stop rendering. One definition of the margin,
+    shared with the layout, is worth more than a cleverer one.
     """
-    weight = Counter()
-    for ln in lines:
-        if not ln.in_note_zone:
-            weight[round(ln.x0)] += len(ln.text)
-    return float(weight.most_common(1)[0][0]) if weight else 0.0
+    xs = [ln.x0 for ln in lines if not ln.in_note_zone and ln.text.strip()]
+    return float(min(xs)) if xs else 0.0
 
 
 def _intro_marks_lists(lines: list[Line]) -> bool:

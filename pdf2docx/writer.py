@@ -20,7 +20,11 @@ from docx.shared import Pt
 
 from .structure import Block, Doc
 
-DEFAULT_TEMPLATE = Path("/Users/4n6h4x0r/src/expert-report-kit/templates/house-report.docx")
+# Optional style source. Deliberately NOT an absolute path into one machine's
+# home directory: a published tool that only works on the author's Mac is not a
+# tool. Resolution order is the environment, then a template vendored in this
+# repo beside the package, then none.
+DEFAULT_TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "house-report.docx"
 # The house font (Equity B) may be absent where the file is opened, and Word's
 # substitution for it mangles glyphs. Fidelity to the source wins: body text is
 # set in a font that actually resolves, unless a template asks for another.
@@ -252,13 +256,89 @@ def _add(document, text, style, b: Block):
     return p
 
 
+
+
+def _bullet_num_id(document) -> str:
+    """The w:numId of a bullet list, discovered or created.
+
+    The house template already defines one; the base document may not. Hardcoding
+    the template's id (12) made bullets vanish silently wherever the template was
+    absent — a paragraph referencing a numId that does not exist simply is not
+    numbered.
+    """
+    numbering = document.part.numbering_part.element
+    for ab in numbering.findall(qn("w:abstractNum")):
+        lvl = ab.find(qn("w:lvl"))
+        fmt = lvl.find(qn("w:numFmt")) if lvl is not None else None
+        if fmt is None or fmt.get(qn("w:val")) != "bullet":
+            continue
+        aid = ab.get(qn("w:abstractNumId"))
+        for num in numbering.findall(qn("w:num")):
+            ref = num.find(qn("w:abstractNumId"))
+            if ref is not None and ref.get(qn("w:val")) == aid:
+                return num.get(qn("w:numId"))
+
+    ab_ids = [int(a.get(qn("w:abstractNumId")))
+              for a in numbering.findall(qn("w:abstractNum"))] or [0]
+    num_ids = [int(n.get(qn("w:numId")))
+               for n in numbering.findall(qn("w:num"))] or [0]
+    aid, nid = max(ab_ids) + 1, max(num_ids) + 1
+
+    abstract = OxmlElement("w:abstractNum")
+    abstract.set(qn("w:abstractNumId"), str(aid))
+    lvl = OxmlElement("w:lvl")
+    lvl.set(qn("w:ilvl"), "0")
+    for tag, val in (("w:start", "1"), ("w:numFmt", "bullet"),
+                     ("w:lvlText", "\u2022"), ("w:lvlJc", "left")):
+        el = OxmlElement(tag)
+        el.set(qn("w:val"), val)
+        lvl.append(el)
+    ppr = OxmlElement("w:pPr")
+    ind = OxmlElement("w:ind")
+    ind.set(qn("w:left"), "360")
+    ind.set(qn("w:hanging"), "360")
+    ppr.append(ind)
+    lvl.append(ppr)
+    abstract.append(lvl)
+
+    first_num = numbering.find(qn("w:num"))
+    if first_num is not None:
+        first_num.addprevious(abstract)
+    else:
+        numbering.append(abstract)
+
+    num = OxmlElement("w:num")
+    num.set(qn("w:numId"), str(nid))
+    ref = OxmlElement("w:abstractNumId")
+    ref.set(qn("w:val"), str(aid))
+    num.append(ref)
+    numbering.append(num)
+    return str(nid)
+
+def _ensure_footnote_styles(document) -> None:
+    """Create the two footnote styles if the base document lacks them.
+
+    With the optional house template these already exist; without it the base
+    document has no footnote styles, and a `w:rStyle` naming one that does not
+    exist is silently ignored — the note would render as ordinary body text.
+    """
+    from docx.enum.style import WD_STYLE_TYPE
+
+    names = {s.name for s in document.styles}
+    if "FootnoteText" not in names:
+        st = document.styles.add_style("FootnoteText", WD_STYLE_TYPE.PARAGRAPH)
+        st.font.size = Pt(8)
+    if "FootnoteReference" not in names:
+        st = document.styles.add_style("FootnoteReference", WD_STYLE_TYPE.CHARACTER)
+        st.font.superscript = True
+
 def _ensure_footnotes_part(document):
     """Create word/footnotes.xml and register it, if the template lacks one."""
     try:
         return document.part.part_related_by(REL_FOOTNOTES)
     except KeyError:
         pass
-    from docx.opc.package import Part
+    from docx.opc.part import Part
     from docx.opc.packuri import PackURI
     xml = (
         f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -451,6 +531,7 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
     tpl = template_path()
     document = docx.Document(str(tpl)) if tpl.exists() else docx.Document()
     _clear(document)
+    _ensure_footnote_styles(document)
     notes_part = _ensure_footnotes_part(document) if doc.notes else None
 
     prev_top = None      # last text line's top on the current page, for spacing
@@ -475,7 +556,7 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
                 _suppress_numbering(p)
         elif b.kind == "list_item":
             p = _add(document, b.text, "List Bullet", b)
-            _apply_numbering(p, BULLET_NUM_ID, max(0, (b.level or 1) - 1))
+            _apply_numbering(p, _bullet_num_id(document), max(0, (b.level or 1) - 1))
         else:
             p = _add(document, b.text, None, b)
         if b.marker and notes_part is not None and b.marker in doc.notes:
