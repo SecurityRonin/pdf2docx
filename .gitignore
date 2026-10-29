@@ -9,3 +9,7 @@ research/y/
 research/or_models.json
 corpus/
 research/*.json
+research/*.md
+research/*.log
+research/*.docx
+research/*.pdf
