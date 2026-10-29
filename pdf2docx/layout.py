@@ -130,7 +130,10 @@ def profile(pdf_path) -> LayoutProfile:
                 body_rights.append(max(c["x1"] for c in ch))
         for a, b in zip(body_tops, body_tops[1:]):
             gap = b - a
-            if 0 < gap < body_size * 3:
+            # Only genuine line-to-line gaps. A larger gap is a paragraph break
+            # or a heading, which is spacing between lines, not line spacing —
+            # folding those in loosens every line in the document.
+            if 0 < gap <= body_size * 1.6:
                 pitches.append(gap)
         # Justification: many lines ending within a hair of the right edge.
         for pg in pdf.pages:
@@ -145,7 +148,14 @@ def profile(pdf_path) -> LayoutProfile:
                 if text_right - max(c["x1"] for c in ch) < 2:
                     right_edges += 1
 
-    pitch = statistics.median(pitches) if pitches else body_size * 1.2
+    # The MODE, not the median: the line pitch is the gap that repeats. A median
+    # over a document whose paragraphs are separated by extra space drifts
+    # upward and inflates every line.
+    if pitches:
+        rounded = collections.Counter(round(p, 1) for p in pitches)
+        pitch = rounded.most_common(1)[0][0]
+    else:
+        pitch = body_size * 1.15
     justified = total_lines > 3 and right_edges / total_lines > 0.5
 
     # The dominant font of body-sized text is the body font.

@@ -61,13 +61,40 @@ def _split_marker(text: str, chars: list) -> tuple[str, str]:
     return text[: len(text) - len(tail)].rstrip(), marker
 
 
-def lines(pdf_path, note_zone: float = 0.75) -> list[Line]:
-    """Every text line in reading order (top-to-bottom, left-to-right)."""
+def _inside(c, boxes) -> bool:
+    cx = (c["x0"] + c["x1"]) / 2
+    cy = (c["top"] + c["bottom"]) / 2
+    for x0, y0, x1, y1 in boxes:
+        if x0 <= cx <= x1 and y0 <= cy <= y1:
+            return True
+    return False
+
+
+def lines(pdf_path, note_zone: float = 0.75, exclude=None) -> list[Line]:
+    """Every text line in reading order (top-to-bottom, left-to-right).
+
+    `exclude` maps page number to bounding boxes whose text belongs to a table;
+    that text is emitted as a table instead, so keeping it here would duplicate
+    it as flowing paragraphs.
+    """
     out: list[Line] = []
     with pdfplumber.open(pdf_path) as pdf:
         for pno, page in enumerate(pdf.pages):
             height = float(page.height)
-            for ln in page.extract_text_lines(return_chars=True):
+            boxes = (exclude or {}).get(pno, [])
+            source = page
+            if boxes:
+                # Filter the page's objects rather than joining the surviving
+                # characters: a bare join loses every space pdfplumber derives
+                # from glyph positions, turning "member of the" into
+                # "memberofthe". filter() keeps the real layout of the text.
+                def keep(obj, _b=boxes):
+                    if obj.get("object_type") != "char":
+                        return True
+                    return not _inside(obj, _b)
+
+                source = page.filter(keep)
+            for ln in source.extract_text_lines(return_chars=True):
                 chars = ln.get("chars") or []
                 if not chars:
                     continue

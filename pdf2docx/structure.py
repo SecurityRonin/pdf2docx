@@ -34,6 +34,8 @@ class Block:
     marker: str = ""   # footnote mark that follows this block's text
     page: int = 0
     page_break_before: bool = False
+    top: float = 0.0
+    table: object = None   # set when kind == "table"
 
 
 @dataclass
@@ -84,6 +86,19 @@ def list_body(text: str) -> str | None:
     if m:
         return t[m.end():].strip()
     return None
+
+
+LETTERED_SECTION = re.compile(r"^[A-Z][.)]\s+\S")
+
+
+def _is_lettered_section(ln: Line) -> bool:
+    """'H. REDACTIONS APPLIED FOR' — a lettered heading, not a bullet."""
+    t = ln.text.strip()
+    if not LETTERED_SECTION.match(t) or len(t) > 90:
+        return False
+    body = t[2:].strip()
+    letters = [c for c in body if c.isalpha()]
+    return bool(letters) and all(c.isupper() for c in letters)
 
 
 def _lettered_label(text: str) -> bool:
@@ -162,7 +177,7 @@ def _collect_notes(lines: list[Line]) -> dict[str, str]:
     return notes
 
 
-def classify(lines: list[Line], join: bool = True) -> Doc:
+def classify(lines: list[Line], join: bool = True, tables=None) -> Doc:
     """Classify lines into blocks.
 
     `join=True` merges wrapped lines into paragraphs so the text reflows in
@@ -198,28 +213,66 @@ def classify(lines: list[Line], join: bool = True) -> Doc:
                 # "1" and push every real section down by one.
                 level = 0 if not seen_numbered and not doc.blocks else 1
             doc.blocks.append(Block("heading", text, level, ln.size, ln.bold, ln.italic,
-                                    marker, ln.page, new_page))
+                                    marker, ln.page, new_page, ln.top))
             continue
+        # A lettered ALL-CAPS line ("H. REDACTIONS APPLIED FOR") is a section
+        # heading in a court document, not a list item. The letter is section
+        # numbering Word cannot generate, so it stays in the heading text.
+        if _is_lettered_section(ln):
+            doc.blocks.append(Block("heading", ln.text.strip(), 1, ln.size, ln.bold, ln.italic,
+                                    marker, ln.page, new_page, ln.top))
+            continue
+
         item = list_body(ln.text)
         bulleted = bool(ln.text.strip()[:1]) and ln.text.strip()[0] in BULLETS
         numbered = item is not None and not bulleted and (lists_ok or _lettered_label(ln.text))
         # An indented line below the body margin is a list item in its own right:
         # Word's own list styles indent the item and leave the glyph to numbering.
-        indented = _is_indented(ln, margin, right) and not is_heading(ln, body, nxt)
+        # A lone indented line is not a list: a list is a run. Requiring a
+        # neighbour keeps an indented heading ("Appendix 1 ...") out of the
+        # bullets, where it would lose its identity as a heading.
+        neighbour_indented = (
+            (nxt is not None and _is_indented(nxt, margin, right))
+            or (i > 0 and _is_indented(content[i - 1], margin, right))
+        )
+        indented = (_is_indented(ln, margin, right) and neighbour_indented
+                    and not is_heading(ln, body, nxt))
         if indented:
             doc.blocks.append(Block("list_item", (item if item is not None else ln.text.strip()),
-                                    1, ln.size, ln.bold, ln.italic, marker, ln.page, new_page))
+                                    1, ln.size, ln.bold, ln.italic, marker, ln.page, new_page,
+                                    ln.top))
             continue
         if item is not None and (bulleted or numbered):
             doc.blocks.append(Block("list_item", item, 1, ln.size, ln.bold, ln.italic,
-                                    marker, ln.page, new_page))
+                                    marker, ln.page, new_page, ln.top))
             continue
         doc.blocks.append(Block("body", ln.text, 0, ln.size, ln.bold, ln.italic,
-                                marker, ln.page, new_page))
+                                marker, ln.page, new_page, ln.top))
 
     if join:
         doc.blocks = _join_paragraphs(doc.blocks, right, margin)
+
+    if tables:
+        doc.blocks = _interleave_tables(doc.blocks, list(tables))
     return doc
+
+
+def _interleave_tables(blocks: list[Block], tables: list) -> list[Block]:
+    """Put each table where its position falls in the text flow.
+
+    Ordering by (page, top) rather than appending at the end is what keeps the
+    reading order right: a table mid-document must not jump to the end.
+    """
+    out: list[Block] = []
+    pending = sorted(tables, key=lambda t: (t.page, t.top))
+    for b in blocks:
+        while pending and (pending[0].page, pending[0].top) <= (b.page, b.top):
+            t = pending.pop(0)
+            out.append(Block("table", "", 0, 0, False, False, "", t.page, False, t.top, t))
+        out.append(b)
+    for t in pending:
+        out.append(Block("table", "", 0, 0, False, False, "", t.page, False, t.top, t))
+    return out
 
 
 def _continued(prev: Block, cur: Block, right: float, margin: float) -> bool:

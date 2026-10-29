@@ -67,3 +67,28 @@ def footnote_pdf(tmp_path):
     c.showPage()
     c.save()
     return out
+
+
+@pytest.fixture
+def tabled_pdf(tmp_path):
+    """A ruled table with a spanning header cell, drawn with reportlab."""
+    from reportlab.lib import colors
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+
+    out = tmp_path / "tabled.pdf"
+    doc = SimpleDocTemplate(str(out), pagesize=A4)
+    rows = [
+        ["Evidence overview", "", ""],
+        ["Name", "Role", "Exhibit"],
+        ["Alice", "Analyst", "KTH-1"],
+        ["Bob", "Reviewer", "KTH-2"],
+        ["Carol", "Analyst", "KTH-3"],
+    ]
+    t = Table(rows, colWidths=[120, 120, 100])
+    t.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.6, colors.grey),
+        ("SPAN", (0, 0), (2, 0)),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+    ]))
+    doc.build([t])
+    return out
