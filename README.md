@@ -1,87 +1,108 @@
-# pdf2docx
+[![CI](https://github.com/SecurityRonin/pdf2docx/actions/workflows/ci.yml/badge.svg)](https://github.com/SecurityRonin/pdf2docx/actions/workflows/ci.yml)
+[![Release](https://github.com/SecurityRonin/pdf2docx/actions/workflows/release.yml/badge.svg)](https://github.com/SecurityRonin/pdf2docx/releases)
+[![Docs](https://img.shields.io/badge/docs-securityronin.github.io-blue)](https://securityronin.github.io/pdf2docx/)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/sponsor-h4x0r-ea4aaa?logo=github-sponsors)](https://github.com/sponsors/h4x0r)
 
-Convert a PDF into a DOCX that carries **real Word structure** — heading styles,
-native list numbering and true footnotes — instead of positioned text that happens
-to look like the original.
+**A DOCX you can edit, not a page made of text boxes.**
+
+Most PDF→Word converters reproduce the page: every line a floating box, every section a bold paragraph. This one reproduces the *document* — real `Heading 2` styles, numbering Word generates itself, footnotes that live in `footnotes.xml` — and then matches the source's typography so the result still looks like the PDF it came from.
 
 ```bash
-python -m pdf2docx input.pdf output.docx                  # semantic (default)
-python -m pdf2docx input.pdf output.docx --layout faithful
+python -m pdf2docx contract.pdf contract.docx --layout faithful
 ```
+
+**[Documentation →](https://securityronin.github.io/pdf2docx/)**
+
+---
 
 ## Two modes, because layout and structure conflict in one place
 
-Both keep real Heading styles, native numbering and true footnotes. They differ
-only in whether the text reflows:
+Both keep real heading styles, native list numbering and true footnotes. They differ in whether the text reflows — the only thing that can conflict.
 
 | | typography | text | pages |
 |---|---|---|---|
-| `semantic` | matches the source | reflows; better to edit | differs |
-| `faithful` | matches the source | line and page breaks pinned | near-identical |
+| `semantic` (default) | matches the source | reflows; better to edit | differs |
+| `faithful` | matches the source | line and page breaks pinned | matches |
 
-Measured against the source, rendered through LibreOffice:
+Rendered back to PDF through **WordCraft 0.12.0** and compared with the original:
 
-| Document | Pages | faithful | text retained | notes |
-|---|---|---|---|---|
-| CLLMSP Handbook | 26 | 35 (1.35×) | 99.0% | longer because it no longer drops page-bottom text |
-| Expert Report | 14 | 15 (1.07×) | — | |
-| Terms & Conditions (round trip) | 2 | **2 (1.00×)** | 99.0–99.2% | line-start dx 0.1pt; ~4pt vertical bias; 13–18% of pixels differ |
+| Document | Pages | Text similarity | Pixels differing* |
+|---|---|---|---|
+| Terms & Conditions (2 pp) | **2 → 2** ✅ | **99.2% / 99.4%** | 13.6% / 19.3% |
 
-**An earlier version of this table claimed 1.00× on the handbook. That was
-partly an artefact**: the converter was discarding everything below 75% of the
-page height as footnote text, losing 11.6% (handbook) and 20.5% (contract) of
-the source. Keeping the text costs pages. A page count is not fidelity if
-content is missing.
+\* At 150 dpi, differing by more than 32/255. That residual is glyph shape, not position: the source embeds Calibri, which is proprietary, so the renderer substitutes. Positions match; letterforms do not.
 
-## What it produces
+---
+
+## What it does
 
 | PDF evidence | DOCX result |
 |---|---|
-| section numbering (`1.`, `1.2`) | `Heading N`, digits stripped, Word supplies the number |
-| larger type, short line | heading (level from numbering depth) |
-| bullet glyph / indent + short line | `List Bullet` with explicit `w:numPr` |
-| `(a)`, `b)` labels | list entry |
-| trailing superscript digit + note zone | real footnote in `footnotes.xml` |
+| `1.`, `1.2` numbering | `Heading 1`/`Heading 2`, digits stripped, Word supplies the number |
+| larger type, short line | heading, level from numbering depth |
+| bullet glyph, or indent + short line | `List Bullet` with an explicit `w:numPr` |
+| `(a)`, `(b)` labels | list entries |
+| trailing superscript + note zone | real footnote in `footnotes.xml` |
+| ruled table | real `w:tbl` with `gridSpan`/`vMerge` and a repeating header row |
+| page geometry, fonts, leading | page box, margins, type size, tracking |
 
-## Design notes
+**Fonts.** A PDF names its fonts, so the question is "do I have it, or its metrics". The ladder is: the exact face if installed → a **metric-compatible open clone** (Carlito for Calibri, Liberation for Arial) fetched with a pinned SHA-256 → the closest installed face, fitted by size and then by per-character tracking to the width the source measured. Proprietary faces are never downloaded: they cannot be redistributed, and their clones carry the same advance widths, which is what fidelity needs.
 
-**Structure beats fidelity where they conflict** — a heading is `Heading 2`, never a
-bold paragraph, because a bold paragraph is invisible to the navigation pane, to a
-generated table of contents, and to any tool that walks the outline.
+---
 
-**Styles come from the expert-report-kit `house-report.docx`**, used as a style
-library (Heading1-9, `FootnoteText`, a `numbering.xml` with six formats). Its body
-content and running headers/footers are stripped: that stationery is not the source
-document's content.
+## Install
 
-**Two rules were bought with measurements**, and both are pinned by tests:
-
-- *Justified text is not a list.* Indent alone turned 118 lines of prose into bullets
-  in a real court document. A list item must also fall short of the right measure.
-- *A bold line at body size is not a heading.* It produced 36 H1s where the document's
-  own structure tree carried 13. Type size and numbering decide, not weight.
-
-## Testing
+**From source**
 
 ```bash
+git clone https://github.com/SecurityRonin/pdf2docx
+cd pdf2docx
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pdf2docx in.pdf out.docx
 ```
 
-Some tests render through LibreOffice and read the result back, because a DOCX can be
-structurally valid and still print wrong — the render oracle caught a leaked cover
-page and a font that corrupted every `e` into `(cid:2)`.
-
-To score heading detection against a real document's own tag tree:
+**Desktop app** (macOS, Windows) — opens a PDF, previews it, converts in either mode:
 
 ```bash
-PDF2DOCX_TAGGED_FIXTURE=/path/to/tagged.pdf .venv/bin/python -m pytest tests/test_against_tag_tree.py
+cd app
+npm install
+./scripts/build-engine.sh
+npm run tauri build
 ```
+
+---
+
+## What's different
+
+| | real heading styles | numbering Word generates | true footnotes | real tables | page-faithful | edits cleanly |
+|---|---|---|---|---|---|---|
+| **pdf2docx** (Artifex) | partial | — | — | ✅ | ✅ | partial |
+| **Docling** | partial · flat levels | — | — | ✅ | — | ✅ |
+| **Marker** | partial · flat levels | — | — | ✅ | — | ✅ |
+| **WordCraft** (DOCX→PDF) | n/a · consumer | n/a | n/a | ✅ | ✅ | n/a |
+| **this** | ✅ | ✅ | ✅ | ✅ | ✅ (`faithful`) | ✅ (`semantic`) |
+
+The ML converters detect headings well and never reconstruct their hierarchy; the layout converters match the page and hand you boxes.
+
+---
+
+## Trust, and its limits
+
+- **Measured against independent renderers, not our own fixtures.** WordCraft and LibreOffice are separate DOCX implementations. Where they agree on a page count, that is evidence about the file; where they disagree, it is reported.
+- **Not fuzzed.** The parser takes untrusted input and there is no fuzz story behind it, so no badge claims one.
+- **Page-identical is demonstrated on two documents, not guaranteed.** Multi-column, rotated pages and floating objects are untested.
+- **The failures are in the log.** A converter that silently dropped 20% of a contract, and a heading rule that ate lettered sections, were found by measurement and fixed; the commits say so.
+
+---
 
 ## Known limits
 
-- Untagged PDFs are inferred from geometry only; there is no structure to read.
-- Multi-column layouts, tables and scanned pages are not handled.
-- Rich labelled PDFs (which carry `H1`/`H2`/`List Paragraph` tags bound to MCIDs) are
-  detected by the research in `RESEARCH.md` but the converter does not yet use the tag
-  path — that is the highest-value next step, measured at 88% heading recall.
+- Untagged PDFs are inferred from geometry; there is no structure to read.
+- 29.5% of PDFs carry a usable structure tree and the converter does not read it yet — measured at 88% heading recall versus 57% for the geometry path. It is the largest known win available.
+- Scanned pages need OCR first.
+- Pixels will not match without the original font.
+
+---
+
+[Privacy Policy](https://securityronin.github.io/pdf2docx/privacy/) · [Terms of Service](https://securityronin.github.io/pdf2docx/terms/) · © 2026 Security Ronin Ltd

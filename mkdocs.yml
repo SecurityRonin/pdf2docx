@@ -1,0 +1,38 @@
+site_name: pdf2docx
+site_url: https://securityronin.github.io/pdf2docx/
+repo_url: https://github.com/SecurityRonin/pdf2docx
+repo_name: SecurityRonin/pdf2docx
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Overview: index.md
+  - Validation: validation.md
+  - Signing: signing.md
+  - Privacy: privacy.md
+  - Terms: terms.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.superfences
+
+plugins:
+  - search

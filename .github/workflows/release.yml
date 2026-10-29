@@ -251,3 +251,78 @@ jobs:
           name: windows-x86_64
           path: dist/*
           if-no-files-found: error
+
+  # Without this job the workflow only uploads workflow artifacts, which expire
+  # and are invisible to users: nothing is ever *released*. Signing is half a
+  # release; this is the other half.
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: artifacts/*
+          body: |
+            Signed installers.
+
+            - **macOS**: Developer ID signed, notarized and stapled. Gatekeeper will
+              not warn. Universal (arm64 + Intel).
+            - **Windows**: Azure Trusted Signing (Authenticode), timestamped RFC 3161.
+              Windows has no notarization service; the signature carries publisher
+              identity and SmartScreen reputation.
+
+            Verify the download against `SHA256SUMS.txt` before installing.
+
+  # Homebrew cask. Gated on the tap token and non-fatal, so a release never fails
+  # because the tap has not been provisioned yet.
+  homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: SecurityRonin/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+      - name: Write the cask
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p tap/Casks
+          cat > tap/Casks/pdf2docx.rb <<RUBY
+          cask "pdf2docx" do
+            version "${VERSION}"
+            sha256 :no_check
+
+            url "https://github.com/SecurityRonin/pdf2docx/releases/download/v#{version}/PDF2DOCX-#{version}-aarch64-apple-darwin.dmg",
+                verified: "github.com/SecurityRonin/pdf2docx/"
+            name "PDF to DOCX"
+            desc "Convert PDF into a DOCX with real Word structure"
+            homepage "https://securityronin.github.io/pdf2docx/"
+
+            app "PDF to DOCX.app"
+          end
+          RUBY
+      - name: Commit and push
+        run: |
+          cd tap
+          git config user.name  "securityronin-bot"
+          git config user.email "bot@securityronin.com"
+          git add Casks/pdf2docx.rb
+          git commit -m "pdf2docx ${GITHUB_REF_NAME}" || echo "no change"
+          git push
