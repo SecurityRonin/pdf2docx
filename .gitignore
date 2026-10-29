@@ -8,3 +8,4 @@ research/x/
 research/y/
 research/or_models.json
 corpus/
+research/*.json
