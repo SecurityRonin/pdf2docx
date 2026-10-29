@@ -1,0 +1,5 @@
+pdfplumber>=0.11
+python-docx>=1.2
+# test-only
+pytest>=8
+reportlab>=4
