@@ -21,15 +21,17 @@ only in whether the text reflows:
 
 Measured against the source, rendered through LibreOffice:
 
-| Document | Pages | semantic | faithful | page openings that match |
+| Document | Pages | faithful | text retained | notes |
 |---|---|---|---|---|
-| CLLMSP Handbook | 26 | 0.73× | **1.00×** | 26/26 |
-| Expert Report | 14 | 0.64× | **1.00×** | 12/14 |
+| CLLMSP Handbook | 26 | 35 (1.35×) | 99.0% | longer because it no longer drops page-bottom text |
+| Expert Report | 14 | 15 (1.07×) | — | |
+| Terms & Conditions (round trip) | 2 | **2 (1.00×)** | 99.0–99.2% | line-start dx 0.1pt; ~4pt vertical bias; 13–18% of pixels differ |
 
-Page count is exact on both. Page size, body size, font and margins match in
-both modes. The two remaining opening mismatches are classification, not
-layout: a table header cell whose text reorders, and a lettered sub-item
-`(c)` emitted as a bullet.
+**An earlier version of this table claimed 1.00× on the handbook. That was
+partly an artefact**: the converter was discarding everything below 75% of the
+page height as footnote text, losing 11.6% (handbook) and 20.5% (contract) of
+the source. Keeping the text costs pages. A page count is not fidelity if
+content is missing.
 
 ## What it produces
 
