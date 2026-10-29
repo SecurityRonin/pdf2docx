@@ -29,7 +29,7 @@ Rendered back to PDF through **WordCraft 0.12.0** and compared with the original
 
 | Document | Pages | Text similarity | Pixels differing* |
 |---|---|---|---|
-| Terms & Conditions (2 pp) | **2 → 2** ✅ | **99.2% / 99.4%** | 13.6% / 19.3% |
+| Two-page contract | **2 → 2** ✅ | **99.2% / 99.4%** | 13.6% / 19.3% |
 
 \* At 150 dpi, differing by more than 32/255. That residual is glyph shape, not position: the source embeds Calibri, which is proprietary, so the renderer substitutes. Positions match; letterforms do not.
 

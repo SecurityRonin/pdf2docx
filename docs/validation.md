@@ -19,7 +19,7 @@ evidence about the file.
 
 ## Results
 
-Terms & Conditions for Installation Work (2 pages, A4, Calibri embedded):
+A two-page commercial contract (A4, Calibri embedded):
 
 | | source | faithful |
 |---|---|---|

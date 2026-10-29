@@ -6,6 +6,7 @@ tests could not: the template's cover page and running footer leaked into the
 output, and the house font did not resolve, breaking every 'e' into (cid:2).
 """
 import pathlib
+import re
 import shutil
 import subprocess
 import zipfile
@@ -27,14 +28,28 @@ def _render(docx_path, outdir):
     return outdir / (docx_path.stem + ".pdf")
 
 
-def test_output_holds_no_cover_page_or_running_furniture(numbered_pdf, tmp_path):
-    """The template's stationery is not the source document's content."""
+def test_output_adds_no_text_the_source_did_not_contain(numbered_pdf, tmp_path):
+    """Nothing from the template may leak: no cover line, no running footer.
+
+    Checked by comparing vocabularies rather than by naming one template's
+    strings: a list of literals only proves those literals are absent, and any
+    other stationery would pass. Every word in the DOCX must exist in the PDF.
+    """
     out = tmp_path / "out.docx"
     convert(numbered_pdf, out)
-    text = " ".join(p.text for p in docx.Document(str(out)).paragraphs)
-    for foreign in ("Scarlet Monkey", "Connaught Road", "Rev. [Revision]",
-                    "Case Number", "DocCode", "info@securityronin.com"):
-        assert foreign not in text, foreign
+
+    with pdfplumber.open(numbered_pdf) as pdf:
+        source_words = set()
+        for pg in pdf.pages:
+            source_words |= set(re.findall(r"[A-Za-z0-9]+",
+                                           (pg.extract_text() or "").lower()))
+
+    doc_words = set()
+    for para in docx.Document(str(out)).paragraphs:
+        doc_words |= set(re.findall(r"[A-Za-z0-9]+", para.text.lower()))
+
+    invented = doc_words - source_words
+    assert not invented, f"DOCX contains words absent from the source: {invented}"
 
 
 def test_blanks_before_bullets_are_not_paragraphs(numbered_pdf, tmp_path):
