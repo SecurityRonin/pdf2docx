@@ -98,6 +98,43 @@ BULLET_NUM_ID = "12"   # the house template's bullet abstractNum (w:num w:numId=
 LETTERED_HEADING = re.compile(r"^[A-Z][.)]\s+\S")
 
 
+def _place(pf, b, prof) -> None:
+    """Horizontal placement: indent from the source, and its alignment.
+
+    Without this a right-aligned header line lands at the left margin and an
+    indented body block loses its indent, so no word is where the source put it
+    even when every line break is correct.
+    """
+    if prof is None or not b.x0:
+        return
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    left = prof.left_margin
+    measure_right = prof.page_width - prof.right_margin
+    tol = 14.0
+    inset_left = b.x0 - left
+    inset_right = measure_right - b.x1 if b.x1 else 0.0
+
+    if inset_right < tol and inset_left > 30:
+        pf.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        pf.left_indent = Pt(0)
+        return
+    if inset_left > 30 and inset_right > 30 and abs(inset_left - inset_right) < 30:
+        pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        pf.left_indent = Pt(0)
+        return
+    pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    # Only indent when the line still fits: an indent narrows the paragraph's
+    # measure, and a line that already filled the measure then wraps into two,
+    # adding pages. The indent must never cost a line.
+    measure = measure_right - left
+    width = (b.x1 - b.x0) if b.x1 else 0.0
+    if inset_left >= 6 and width and width <= measure - inset_left - 2:
+        pf.left_indent = Pt(inset_left)
+    else:
+        pf.left_indent = Pt(0)
+
+
 def _suppress_numbering(p) -> None:
     """numId 0 is Word's way of saying 'this paragraph is not numbered'."""
     ppr = p._p.get_or_add_pPr()
@@ -373,9 +410,15 @@ def write(doc: Doc, dst, prof=None, layout: str = "semantic") -> None:
             # A line's height is the pitch, except where the line itself is
             # bigger than the pitch (a display heading): exact spacing at the
             # pitch would clip it.
+            # The measured pitch wins; the size term only stops a clipped line
+            # when the measurement is implausibly tight. Using 1.15x the size as
+            # a floor overrode a true 12.0pt pitch with 12.65 and pushed every
+            # page over.
             height = max(prof.line_pitch if prof else 0,
-                         (b.size or (prof.body_size if prof else 12)) * 1.15)
+                         (b.size or (prof.body_size if prof else 12)) * 0.95)
             pf.line_spacing = Pt(height)
+            if not os.environ.get("PDF2DOCX_NO_PLACE"):
+                _place(pf, b, prof)
             if prev_top is not None and prev_page == b.page and b.top > 0:
                 extra = (b.top - prev_top) - prev_height
                 pf.space_before = Pt(max(0.0, min(extra, 200)))

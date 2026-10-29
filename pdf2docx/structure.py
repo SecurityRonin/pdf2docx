@@ -36,6 +36,8 @@ class Block:
     page_break_before: bool = False
     top: float = 0.0
     table: object = None   # set when kind == "table"
+    x0: float = 0.0        # left edge, for faithful indentation
+    x1: float = 0.0        # right edge, for faithful alignment
 
 
 @dataclass
@@ -213,14 +215,14 @@ def classify(lines: list[Line], join: bool = True, tables=None) -> Doc:
                 # "1" and push every real section down by one.
                 level = 0 if not seen_numbered and not doc.blocks else 1
             doc.blocks.append(Block("heading", text, level, ln.size, ln.bold, ln.italic,
-                                    marker, ln.page, new_page, ln.top))
+                                    marker, ln.page, new_page, ln.top, None, ln.x0, ln.x1))
             continue
         # A lettered ALL-CAPS line ("H. REDACTIONS APPLIED FOR") is a section
         # heading in a court document, not a list item. The letter is section
         # numbering Word cannot generate, so it stays in the heading text.
         if _is_lettered_section(ln):
             doc.blocks.append(Block("heading", ln.text.strip(), 1, ln.size, ln.bold, ln.italic,
-                                    marker, ln.page, new_page, ln.top))
+                                    marker, ln.page, new_page, ln.top, None, ln.x0, ln.x1))
             continue
 
         item = list_body(ln.text)
@@ -244,10 +246,10 @@ def classify(lines: list[Line], join: bool = True, tables=None) -> Doc:
             continue
         if item is not None and (bulleted or numbered):
             doc.blocks.append(Block("list_item", item, 1, ln.size, ln.bold, ln.italic,
-                                    marker, ln.page, new_page, ln.top))
+                                    marker, ln.page, new_page, ln.top, None, ln.x0, ln.x1))
             continue
         doc.blocks.append(Block("body", ln.text, 0, ln.size, ln.bold, ln.italic,
-                                marker, ln.page, new_page, ln.top))
+                                marker, ln.page, new_page, ln.top, None, ln.x0, ln.x1))
 
     if join:
         doc.blocks = _join_paragraphs(doc.blocks, right, margin)

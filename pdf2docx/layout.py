@@ -114,6 +114,7 @@ def profile(pdf_path) -> LayoutProfile:
     # and paragraph gaps inflate a naive median badly (a handbook read 34.8pt
     # for 10.5pt text because every title gap counted).
     body_rights: list[float] = []
+    body_lefts: collections.Counter = collections.Counter()
     with pdfplumber.open(pdf_path) as pdf:
         body_tops: list[float] = []
         for pg in pdf.pages:
@@ -124,6 +125,7 @@ def profile(pdf_path) -> LayoutProfile:
                 if abs(statistics.median(c["size"] for c in ch) - body_size) > 0.6:
                     continue
                 body_tops.append(ln["top"])
+                body_lefts[round(min(c["x0"] for c in ch))] += len(ch)
                 # The measure is where BODY text ends. A running rule, a table
                 # border or a watermark that touches the page edge is not the
                 # text column and must not define the margin.
@@ -161,7 +163,12 @@ def profile(pdf_path) -> LayoutProfile:
     # The dominant font of body-sized text is the body font.
     family = family_of(fonts.most_common(1)[0][0]) if fonts else "Arial"
 
-    left = min(lefts) if lefts else 72.0
+    # The body margin is where body text starts, measured by characters. Taking
+    # the minimum x0 on any page picks up a footer or a wide element, and every
+    # line is then indented by the difference — which narrows the column and
+    # makes previously single-line paragraphs wrap, adding pages.
+    left = float(body_lefts.most_common(1)[0][0]) if body_lefts else (
+        min(lefts) if lefts else 72.0)
     top = min(tops) if tops else 72.0
 
     # Take a high percentile, not the maximum: one stray element (a rule, a
