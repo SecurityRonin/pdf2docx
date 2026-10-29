@@ -291,7 +291,12 @@ jobs:
   homebrew:
     needs: publish
     runs-on: ubuntu-latest
-    if: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
+    # A job-level `if:` cannot read `secrets`; that fails the whole workflow at
+    # parse time (which is exactly what happened: the run failed in 0s). The
+    # secret is lifted into job env and the condition tests that instead.
+    env:
+      HAS_TAP: ${{ secrets.TAP_GITHUB_TOKEN != '' }}
+    if: ${{ env.HAS_TAP == 'true' }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
