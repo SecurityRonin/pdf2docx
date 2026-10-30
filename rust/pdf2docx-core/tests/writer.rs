@@ -24,12 +24,48 @@ fn sample() -> Doc {
         notes: Vec::new(),
         layout: Default::default(),
         blocks: vec![
-            Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0, marker: None, table: None },
-            Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1, marker: None, table: None },
-            Block { kind: Kind::Heading, text: "Systems Covered".into(), level: 2, marker: None, table: None },
-            Block { kind: Kind::Body, text: "The review covered three systems.".into(), level: 0, marker: None, table: None },
-            Block { kind: Kind::ListItem, text: "Mail server".into(), level: 0, marker: None, table: None },
-            Block { kind: Kind::ListItem, text: "File server".into(), level: 0, marker: None, table: None },
+            Block {
+                kind: Kind::Heading,
+                text: "Quarterly Security Review".into(),
+                level: 0,
+                marker: None,
+                table: None,
+            },
+            Block {
+                kind: Kind::Heading,
+                text: "Scope of the Review".into(),
+                level: 1,
+                marker: None,
+                table: None,
+            },
+            Block {
+                kind: Kind::Heading,
+                text: "Systems Covered".into(),
+                level: 2,
+                marker: None,
+                table: None,
+            },
+            Block {
+                kind: Kind::Body,
+                text: "The review covered three systems.".into(),
+                level: 0,
+                marker: None,
+                table: None,
+            },
+            Block {
+                kind: Kind::ListItem,
+                text: "Mail server".into(),
+                level: 0,
+                marker: None,
+                table: None,
+            },
+            Block {
+                kind: Kind::ListItem,
+                text: "File server".into(),
+                level: 0,
+                marker: None,
+                table: None,
+            },
         ],
     }
 }
@@ -38,8 +74,13 @@ fn sample() -> Doc {
 fn writes_a_package_with_the_parts_word_requires() {
     let p = out_path("parts");
     write(&sample(), &p).unwrap();
-    for part in ["[Content_Types].xml", "_rels/.rels", "word/document.xml",
-                 "word/styles.xml", "word/numbering.xml"] {
+    for part in [
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "word/document.xml",
+        "word/styles.xml",
+        "word/numbering.xml",
+    ] {
         let body = read_part(&p, part);
         assert!(!body.is_empty(), "{part} is empty");
     }
@@ -68,10 +109,16 @@ fn list_items_carry_native_numbering() {
     let p = out_path("lists");
     write(&sample(), &p).unwrap();
     let doc = read_part(&p, "word/document.xml");
-    assert!(doc.contains("<w:numPr>"), "list paragraphs must carry numPr");
+    assert!(
+        doc.contains("<w:numPr>"),
+        "list paragraphs must carry numPr"
+    );
     assert!(doc.contains("<w:numId"), "numPr must reference a numId");
     let numbering = read_part(&p, "word/numbering.xml");
-    assert!(numbering.contains("bullet"), "numbering.xml must define a bullet level");
+    assert!(
+        numbering.contains("bullet"),
+        "numbering.xml must define a bullet level"
+    );
 }
 
 #[test]
@@ -81,7 +128,10 @@ fn list_glyphs_are_not_baked_into_the_text() {
     d.blocks[4].text = "Mail server".into();
     write(&d, &p).unwrap();
     let doc = read_part(&p, "word/document.xml");
-    assert!(!doc.contains("\u{2022} Mail server"), "glyph leaked into the text");
+    assert!(
+        !doc.contains("\u{2022} Mail server"),
+        "glyph leaked into the text"
+    );
 }
 
 #[test]
@@ -108,7 +158,16 @@ fn the_heading_size_ladder_descends_and_starts_below_the_title() {
         let rest = &seg[sz + 13..];
         rest[..rest.find('"').unwrap()].parse().unwrap()
     };
-    assert!(size_of("Title") > size_of("Heading1"), "title must be largest");
-    assert!(size_of("Heading1") > size_of("Heading2"), "H1 must exceed H2");
-    assert!(size_of("Heading2") > size_of("Heading3"), "H2 must exceed H3");
+    assert!(
+        size_of("Title") > size_of("Heading1"),
+        "title must be largest"
+    );
+    assert!(
+        size_of("Heading1") > size_of("Heading2"),
+        "H1 must exceed H2"
+    );
+    assert!(
+        size_of("Heading2") > size_of("Heading3"),
+        "H2 must exceed H3"
+    );
 }

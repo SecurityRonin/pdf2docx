@@ -20,8 +20,20 @@ fn a_ruled_grid_is_detected_as_a_table() {
     let lines = pdf2docx_core::extract::extract(&fixture()).unwrap();
     let segs = pdf2docx_core::extract::segments(&fixture()).unwrap();
     let doc = classify_with(&lines, &segs);
-    let tables: Vec<_> = doc.blocks.iter().filter(|b| b.kind == Kind::Table).collect();
-    assert_eq!(tables.len(), 1, "blocks: {:?}", doc.blocks.iter().map(|b| (&b.kind, &b.text)).collect::<Vec<_>>());
+    let tables: Vec<_> = doc
+        .blocks
+        .iter()
+        .filter(|b| b.kind == Kind::Table)
+        .collect();
+    assert_eq!(
+        tables.len(),
+        1,
+        "blocks: {:?}",
+        doc.blocks
+            .iter()
+            .map(|b| (&b.kind, &b.text))
+            .collect::<Vec<_>>()
+    );
     let t = tables[0].table.as_ref().expect("table payload missing");
     assert_eq!((t.rows, t.cols), (2, 2), "grid {}x{}", t.rows, t.cols);
 }
@@ -31,8 +43,14 @@ fn cell_text_lands_in_its_own_cell() {
     let lines = pdf2docx_core::extract::extract(&fixture()).unwrap();
     let segs = pdf2docx_core::extract::segments(&fixture()).unwrap();
     let doc = classify_with(&lines, &segs);
-    let t = doc.blocks.iter().find(|b| b.kind == Kind::Table).unwrap()
-        .table.as_ref().unwrap();
+    let t = doc
+        .blocks
+        .iter()
+        .find(|b| b.kind == Kind::Table)
+        .unwrap()
+        .table
+        .as_ref()
+        .unwrap();
     let at = |r: usize, c: usize| t.grid[r][c].clone();
     assert_eq!(at(0, 0), "Alpha");
     assert_eq!(at(0, 1), "Beta");
@@ -46,7 +64,10 @@ fn prose_beside_the_table_is_not_swallowed() {
     let segs = pdf2docx_core::extract::segments(&fixture()).unwrap();
     let doc = classify_with(&lines, &segs);
     let text: Vec<&str> = doc.blocks.iter().map(|b| b.text.as_str()).collect();
-    assert!(text.iter().any(|t| t.contains("summarises the results")), "{text:?}");
+    assert!(
+        text.iter().any(|t| t.contains("summarises the results")),
+        "{text:?}"
+    );
     assert!(text.iter().any(|t| t.contains("no exceptions")), "{text:?}");
 }
 

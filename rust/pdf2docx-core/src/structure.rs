@@ -33,7 +33,17 @@ pub struct Line {
 
 impl Line {
     pub fn new(text: &str, size: f32, x0: f32, x1: f32, top: f32) -> Self {
-        Self { text: text.to_string(), size, x0, x1, top, bold: false, page: 0, page_height: 0.0, page_width: 0.0 }
+        Self {
+            text: text.to_string(),
+            size,
+            x0,
+            x1,
+            top,
+            bold: false,
+            page: 0,
+            page_height: 0.0,
+            page_width: 0.0,
+        }
     }
 }
 
@@ -142,9 +152,10 @@ fn is_heading(l: &Line, body: f32) -> bool {
     }
 }
 
-
-const BULLETS: [char; 10] = ['\u{2022}', '\u{25aa}', '\u{25e6}', '\u{2023}', '\u{b7}',
-                             '\u{2219}', '\u{25cf}', '\u{25a0}', '\u{2043}', '\u{2014}'];
+const BULLETS: [char; 10] = [
+    '\u{2022}', '\u{25aa}', '\u{25e6}', '\u{2023}', '\u{b7}', '\u{2219}', '\u{25cf}', '\u{25a0}',
+    '\u{2043}', '\u{2014}',
+];
 const INDENT_PT: f32 = 8.0;
 const SHORT_LINE: f32 = 0.62;
 
@@ -154,14 +165,19 @@ const SHORT_LINE: f32 = 0.62;
 /// the mode reports the list indent as the margin and then nothing looks
 /// indented — which is how bullets stop rendering.
 pub fn margin(lines: &[Line]) -> f32 {
-    lines.iter().filter(|l| !l.text.trim().is_empty()).map(|l| l.x0)
+    lines
+        .iter()
+        .filter(|l| !l.text.trim().is_empty())
+        .map(|l| l.x0)
         .fold(f32::INFINITY, f32::min)
 }
 
 /// The 90th percentile of line ends: the measure the text is set to.
 pub fn right_edge(lines: &[Line]) -> f32 {
     let mut v: Vec<f32> = lines.iter().filter(|l| l.x1 > 0.0).map(|l| l.x1).collect();
-    if v.is_empty() { return 0.0; }
+    if v.is_empty() {
+        return 0.0;
+    }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     v[(v.len() as f32 * 0.9) as usize]
 }
@@ -193,30 +209,57 @@ pub fn list_body(text: &str) -> Option<String> {
     if label_len == 0 || label_len > 2 {
         return None;
     }
-    let after = &rest[rest.char_indices().nth(label_len).map(|(i, _)| i).unwrap_or(rest.len())..];
-    let close = if t.starts_with('(') { ")" } else { after.chars().next().map(|c| if c == '.' { "." } else { ")" }).unwrap_or("") };
+    let after = &rest[rest
+        .char_indices()
+        .nth(label_len)
+        .map(|(i, _)| i)
+        .unwrap_or(rest.len())..];
+    let close = if t.starts_with('(') {
+        ")"
+    } else {
+        after
+            .chars()
+            .next()
+            .map(|c| if c == '.' { "." } else { ")" })
+            .unwrap_or("")
+    };
     let tail = after.strip_prefix(close)?;
     if !tail.starts_with(char::is_whitespace) {
         return None;
     }
     let item = tail.trim();
-    if item.is_empty() { None } else { Some(item.to_string()) }
+    if item.is_empty() {
+        None
+    } else {
+        Some(item.to_string())
+    }
 }
 
 /// "H. REDACTIONS APPLIED FOR" — a lettered heading, not a bullet.
 fn is_lettered_section(text: &str) -> bool {
     let t = text.trim();
     let mut cs = t.chars();
-    let first = match cs.next() { Some(c) => c, None => return false };
-    if !first.is_ascii_uppercase() { return false; }
+    let first = match cs.next() {
+        Some(c) => c,
+        None => return false,
+    };
+    if !first.is_ascii_uppercase() {
+        return false;
+    }
     let rest = match cs.next() {
         Some(c) if c == '.' || c == ')' => cs.as_str(),
         _ => return false,
     };
-    if !rest.starts_with(char::is_whitespace) { return false; }
+    if !rest.starts_with(char::is_whitespace) {
+        return false;
+    }
     let body = rest.trim();
-    if body.chars().count() > 90 || body.is_empty() { return false; }
-    body.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase())
+    if body.chars().count() > 90 || body.is_empty() {
+        return false;
+    }
+    body.chars()
+        .filter(|c| c.is_alphabetic())
+        .all(|c| c.is_uppercase())
 }
 
 /// True for "(a) ..." / "a) ..." — a sub-item label, unambiguous on its own.
@@ -235,7 +278,8 @@ const NOTE_ZONE: f32 = 0.75;
 fn is_rule(text: &str) -> bool {
     let t = text.trim();
     t.chars().count() >= 3
-        && t.chars().all(|c| c == '-' || c == '_' || c == '\u{2014}' || c == '\u{2013}')
+        && t.chars()
+            .all(|c| c == '-' || c == '_' || c == '\u{2014}' || c == '\u{2013}')
 }
 
 /// "1  Statement of ..." -> ("1", "Statement of ...").
@@ -360,7 +404,9 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                 table_at[seen] = Some(ti);
                 ti += 1;
                 // advance past this table's own lines
-                while seen < consumed.len() && consumed[seen] { seen += 1; }
+                while seen < consumed.len() && consumed[seen] {
+                    seen += 1;
+                }
             } else {
                 seen += 1;
             }
@@ -369,16 +415,27 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
 
     let margin = margin(lines);
     let right = right_edge(lines);
-    let lists_ok = content.iter().any(|(l, _)| l.text.trim().chars().next()
-        .map(|c| BULLETS.contains(&c)).unwrap_or(false));
+    let lists_ok = content.iter().any(|(l, _)| {
+        l.text
+            .trim()
+            .chars()
+            .next()
+            .map(|c| BULLETS.contains(&c))
+            .unwrap_or(false)
+    });
     let mut blocks: Vec<Block> = Vec::new();
     let mut seen_numbered = false;
 
     for (i, (l, mk)) in content.iter().enumerate() {
         if consumed[i] {
             if let Some(ti) = table_at[i] {
-                blocks.push(Block { kind: Kind::Table, text: String::new(), level: 0, marker: None,
-                                    table: Some(tables[ti].clone()) });
+                blocks.push(Block {
+                    kind: Kind::Table,
+                    text: String::new(),
+                    level: 0,
+                    marker: None,
+                    table: Some(tables[ti].clone()),
+                });
             }
             continue;
         }
@@ -390,38 +447,88 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
             match split_section(t) {
                 Some((depth, rest)) => {
                     seen_numbered = true;
-                    blocks.push(Block { kind: Kind::Heading, text: rest, level: depth, marker: mk.clone(), table: None });
+                    blocks.push(Block {
+                        kind: Kind::Heading,
+                        text: rest,
+                        level: depth,
+                        marker: mk.clone(),
+                        table: None,
+                    });
                 }
                 None => {
-                    let level = if !seen_numbered && blocks.is_empty() { 0 } else { 1 };
-                    blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level, marker: mk.clone(), table: None });
+                    let level = if !seen_numbered && blocks.is_empty() {
+                        0
+                    } else {
+                        1
+                    };
+                    blocks.push(Block {
+                        kind: Kind::Heading,
+                        text: t.to_string(),
+                        level,
+                        marker: mk.clone(),
+                        table: None,
+                    });
                 }
             }
             continue;
         }
 
         if is_lettered_section(t) {
-            blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level: 1, marker: mk.clone(), table: None });
+            blocks.push(Block {
+                kind: Kind::Heading,
+                text: t.to_string(),
+                level: 1,
+                marker: mk.clone(),
+                table: None,
+            });
             continue;
         }
 
         let item = list_body(t);
-        let bulleted = t.chars().next().map(|c| BULLETS.contains(&c)).unwrap_or(false);
+        let bulleted = t
+            .chars()
+            .next()
+            .map(|c| BULLETS.contains(&c))
+            .unwrap_or(false);
         let numbered = item.is_some() && !bulleted && (lists_ok || is_lettered_label(t));
         let neighbour_indented = nxt.map(|n| is_indented(n, margin, right)).unwrap_or(false)
-            || prior.map(|p| is_indented(p, margin, right)).unwrap_or(false);
+            || prior
+                .map(|p| is_indented(p, margin, right))
+                .unwrap_or(false);
         if is_indented(l, margin, right) && neighbour_indented {
             let text = item.unwrap_or_else(|| t.to_string());
-            blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone(), table: None });
+            blocks.push(Block {
+                kind: Kind::ListItem,
+                text,
+                level: 0,
+                marker: mk.clone(),
+                table: None,
+            });
             continue;
         }
         if let Some(text) = item {
             if bulleted || numbered {
-                blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone(), table: None });
+                blocks.push(Block {
+                    kind: Kind::ListItem,
+                    text,
+                    level: 0,
+                    marker: mk.clone(),
+                    table: None,
+                });
                 continue;
             }
         }
-        blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0, marker: mk.clone(), table: None });
+        blocks.push(Block {
+            kind: Kind::Body,
+            text: t.to_string(),
+            level: 0,
+            marker: mk.clone(),
+            table: None,
+        });
     }
-    Doc { blocks, notes, layout: crate::layout::profile(lines) }
+    Doc {
+        blocks,
+        notes,
+        layout: crate::layout::profile(lines),
+    }
 }

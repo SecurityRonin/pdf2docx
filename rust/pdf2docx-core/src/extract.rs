@@ -30,7 +30,11 @@ struct FontInfo {
 impl FontInfo {
     fn width_of(&self, code: u32) -> f32 {
         let i = code.saturating_sub(self.first_char) as usize;
-        self.widths.get(i).copied().filter(|w| *w > 0.0).unwrap_or(500.0)
+        self.widths
+            .get(i)
+            .copied()
+            .filter(|w| *w > 0.0)
+            .unwrap_or(500.0)
     }
 
     fn char_of(&self, code: u32) -> Option<String> {
@@ -121,10 +125,17 @@ fn parse_cmap(data: &[u8], two_byte: bool) -> HashMap<u32, String> {
 }
 
 fn font_info(doc: &Document, resources: &lopdf::Dictionary, name: &str) -> FontInfo {
-    let mut info = FontInfo { name: name.to_string(), ..Default::default() };
+    let mut info = FontInfo {
+        name: name.to_string(),
+        ..Default::default()
+    };
     let fonts = resources.get(b"Font").ok().and_then(|o| as_dict(doc, o));
     let Some(fonts) = fonts else { return info };
-    let Some(font) = fonts.get(name.as_bytes()).ok().and_then(|o| as_dict(doc, o)) else {
+    let Some(font) = fonts
+        .get(name.as_bytes())
+        .ok()
+        .and_then(|o| as_dict(doc, o))
+    else {
         return info;
     };
 
@@ -135,14 +146,22 @@ fn font_info(doc: &Document, resources: &lopdf::Dictionary, name: &str) -> FontI
         .unwrap_or("")
         .to_string();
 
-    let subtype = font.get(b"Subtype").ok().and_then(|o| o.as_name_str().ok()).unwrap_or("");
+    let subtype = font
+        .get(b"Subtype")
+        .ok()
+        .and_then(|o| o.as_name_str().ok())
+        .unwrap_or("");
     info.two_byte = subtype == "Type0";
 
     if let Ok(w) = font.get(b"Widths") {
         if let Ok(arr) = w.as_array() {
             info.widths = arr
                 .iter()
-                .map(|o| o.as_float().or_else(|_| o.as_i64().map(|i| i as f32)).unwrap_or(500.0))
+                .map(|o| {
+                    o.as_float()
+                        .or_else(|_| o.as_i64().map(|i| i as f32))
+                        .unwrap_or(500.0)
+                })
                 .collect();
         }
     }
@@ -222,14 +241,14 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
         let mut x_start = 0.0f32;
         let mut started = false;
 
-        let mut flush = |text: &mut String,
-                         started: &mut bool,
-                         out: &mut Vec<Line>,
-                         x0: f32,
-                         x1: f32,
-                         y: f32,
-                         size: f32,
-                         font_name: &str| {
+        let flush = |text: &mut String,
+                     started: &mut bool,
+                     out: &mut Vec<Line>,
+                     x0: f32,
+                     x1: f32,
+                     y: f32,
+                     size: f32,
+                     font_name: &str| {
             let t = text.trim();
             if *started && !t.is_empty() {
                 out.push(Line {
@@ -255,10 +274,21 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                     text.clear();
                 }
                 "ET" => {
-                    flush(&mut text, &mut started, &mut out, x_start, x, y, size, &font.name);
+                    flush(
+                        &mut text,
+                        &mut started,
+                        &mut out,
+                        x_start,
+                        x,
+                        y,
+                        size,
+                        &font.name,
+                    );
                 }
                 "Tf" => {
-                    if let (Some(Object::Name(n)), Some(sz)) = (op.operands.first(), op.operands.get(1)) {
+                    if let (Some(Object::Name(n)), Some(sz)) =
+                        (op.operands.first(), op.operands.get(1))
+                    {
                         let name = String::from_utf8_lossy(n).to_string();
                         size = sz.as_float().unwrap_or(0.0);
                         let info = fonts
@@ -305,12 +335,26 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                 _ => {}
             }
         }
-        flush(&mut text, &mut started, &mut out, x_start, x, y, size, &font.name);
+        flush(
+            &mut text,
+            &mut started,
+            &mut out,
+            x_start,
+            x,
+            y,
+            size,
+            &font.name,
+        );
     }
 
     out.sort_by(|a, b| {
-        a.page.cmp(&b.page)
-            .then(a.top.partial_cmp(&b.top).unwrap_or(std::cmp::Ordering::Equal))
+        a.page
+            .cmp(&b.page)
+            .then(
+                a.top
+                    .partial_cmp(&b.top)
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
             .then(a.x0.partial_cmp(&b.x0).unwrap_or(std::cmp::Ordering::Equal))
     });
     Ok(out)
@@ -319,7 +363,11 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
 fn append(s: &[u8], font: &FontInfo, size: f32, text: &mut String, x: &mut f32) {
     if font.two_byte {
         for c in s.chunks(2) {
-            let code = if c.len() == 2 { ((c[0] as u32) << 8) | c[1] as u32 } else { c[0] as u32 };
+            let code = if c.len() == 2 {
+                ((c[0] as u32) << 8) | c[1] as u32
+            } else {
+                c[0] as u32
+            };
             if let Some(ch) = font.char_of(code) {
                 text.push_str(&ch);
             }
@@ -347,30 +395,48 @@ pub fn segments(path: &Path) -> Result<Vec<crate::table::Segment>, String> {
 
     for (pno, page_id) in doc.get_pages() {
         let (_, height) = media_size(&doc, page_id);
-        let content = match doc.get_page_content(page_id) { Ok(c) => c, Err(_) => continue };
-        let ops = match Content::decode(&content) { Ok(c) => c, Err(_) => continue };
+        let content = match doc.get_page_content(page_id) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let ops = match Content::decode(&content) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
         let mut pending: Vec<crate::table::Segment> = Vec::new();
         let mut cur = (0.0f32, 0.0f32);
         let mut start = (0.0f32, 0.0f32);
-        let mut commit = |pending: &mut Vec<crate::table::Segment>, out: &mut Vec<crate::table::Segment>| {
+        let commit = |pending: &mut Vec<crate::table::Segment>,
+                      out: &mut Vec<crate::table::Segment>| {
             out.append(pending);
         };
         let seg = |a: (f32, f32), b: (f32, f32)| crate::table::Segment {
-            x0: a.0, y0: a.1, x1: b.0, y1: b.1, page: (pno - 1) as usize, page_height: height,
+            x0: a.0,
+            y0: a.1,
+            x1: b.0,
+            y1: b.1,
+            page: (pno - 1) as usize,
+            page_height: height,
         };
 
         for op in &ops.operations {
             match op.operator.as_str() {
                 "m" => {
                     if op.operands.len() >= 2 {
-                        cur = (op.operands[0].as_float().unwrap_or(0.0), op.operands[1].as_float().unwrap_or(0.0));
+                        cur = (
+                            op.operands[0].as_float().unwrap_or(0.0),
+                            op.operands[1].as_float().unwrap_or(0.0),
+                        );
                         start = cur;
                     }
                 }
                 "l" => {
                     if op.operands.len() >= 2 {
-                        let p = (op.operands[0].as_float().unwrap_or(0.0), op.operands[1].as_float().unwrap_or(0.0));
+                        let p = (
+                            op.operands[0].as_float().unwrap_or(0.0),
+                            op.operands[1].as_float().unwrap_or(0.0),
+                        );
                         pending.push(seg(cur, p));
                         cur = p;
                     }

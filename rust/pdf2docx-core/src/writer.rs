@@ -24,7 +24,10 @@ fn esc(s: &str) -> String {
 }
 
 fn run(text: &str) -> String {
-    format!(r#"<w:r><w:t xml:space="preserve">{}</w:t></w:r>"#, esc(text))
+    format!(
+        r#"<w:r><w:t xml:space="preserve">{}</w:t></w:r>"#,
+        esc(text)
+    )
 }
 
 fn table_xml(t: &crate::table::Table) -> String {
@@ -60,7 +63,7 @@ fn paragraph(b: &Block, note: Option<usize>) -> String {
         ));
     }
     match b.kind {
-        Kind::Table => return b.table.as_ref().map(table_xml).unwrap_or_default(),
+        Kind::Table => b.table.as_ref().map(table_xml).unwrap_or_default(),
         Kind::Heading if b.level == 0 => {
             format!(r#"<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>{body}</w:p>"#)
         }
@@ -106,8 +109,14 @@ fn styles_xml(layout: &crate::layout::Profile) -> String {
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>"#,
     );
     // Title: deliberately not numbered, so the first real section is "1".
-    s = s.replace("{SZ}", &format!("{}", (layout.body_size * 2.0).round() as i64));
-    s = s.replace("{LINE}", &format!("{}", (layout.line_pitch * 20.0).round() as i64));
+    s = s.replace(
+        "{SZ}",
+        &format!("{}", (layout.body_size * 2.0).round() as i64),
+    );
+    s = s.replace(
+        "{LINE}",
+        &format!("{}", (layout.line_pitch * 20.0).round() as i64),
+    );
     s.push_str(r#"<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="56"/></w:rPr></w:style>"#);
     // Half-points, descending, all below the Title's 56 (28pt). An earlier
     // formula produced 72 for Heading 1, so a section rendered larger than the
@@ -194,19 +203,25 @@ fn document_xml(doc: &Doc, ids: &[Option<usize>]) -> String {
 
 /// Write `doc` to `path` as a DOCX package.
 pub fn write(doc: &Doc, path: &Path) -> Result<(), String> {
-    let f = std::fs::File::create(path).map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+    let f = std::fs::File::create(path)
+        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
     let mut zip = zip::ZipWriter::new(f);
     let opts = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
 
-    let mut put = |zip: &mut zip::ZipWriter<std::fs::File>, name: &str, body: String| -> Result<(), String> {
-        zip.start_file(name, opts).map_err(|e| e.to_string())?;
-        zip.write_all(body.as_bytes()).map_err(|e| e.to_string())
-    };
+    let put =
+        |zip: &mut zip::ZipWriter<std::fs::File>, name: &str, body: String| -> Result<(), String> {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            zip.write_all(body.as_bytes()).map_err(|e| e.to_string())
+        };
 
     put(&mut zip, "[Content_Types].xml", CONTENT_TYPES.to_string())?;
     put(&mut zip, "_rels/.rels", ROOT_RELS.to_string())?;
-    put(&mut zip, "word/_rels/document.xml.rels", DOC_RELS.to_string())?;
+    put(
+        &mut zip,
+        "word/_rels/document.xml.rels",
+        DOC_RELS.to_string(),
+    )?;
     let (ids, notes) = footnote_ids(doc);
     put(&mut zip, "word/document.xml", document_xml(doc, &ids))?;
     put(&mut zip, "word/footnotes.xml", footnotes_xml(&notes))?;

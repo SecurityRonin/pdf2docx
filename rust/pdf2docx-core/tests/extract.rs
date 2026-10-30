@@ -11,8 +11,11 @@ fn extracts_every_line_of_text() {
     let lines = extract(&fixture()).expect("extract failed");
     let texts: Vec<&str> = lines.iter().map(|l| l.text.as_str()).collect();
     assert!(texts.contains(&"Quarterly Security Review"), "{texts:?}");
-    assert!(texts.iter().any(|t| t.contains("The review covered")), "{texts:?}");
-    assert!(texts.iter().any(|t| *t == "Mail server"), "{texts:?}");
+    assert!(
+        texts.iter().any(|t| t.contains("The review covered")),
+        "{texts:?}"
+    );
+    assert!(texts.contains(&"Mail server"), "{texts:?}");
 }
 
 #[test]
@@ -26,7 +29,10 @@ fn reports_the_font_size_of_each_line() {
 #[test]
 fn reports_the_left_edge_and_top_of_each_line() {
     let lines = extract(&fixture()).unwrap();
-    let body = lines.iter().find(|l| l.text.starts_with("The review")).unwrap();
+    let body = lines
+        .iter()
+        .find(|l| l.text.starts_with("The review"))
+        .unwrap();
     assert!((body.x0 - 60.0).abs() < 2.0, "x0 = {}", body.x0);
     assert!(body.x1 > body.x0);
     let item = lines.iter().find(|l| l.text == "Mail server").unwrap();
@@ -37,7 +43,10 @@ fn reports_the_left_edge_and_top_of_each_line() {
 fn reports_bold_from_the_font_name() {
     let lines = extract(&fixture()).unwrap();
     let title = lines.iter().find(|l| l.text.contains("Quarterly")).unwrap();
-    let body = lines.iter().find(|l| l.text.starts_with("The review")).unwrap();
+    let body = lines
+        .iter()
+        .find(|l| l.text.starts_with("The review"))
+        .unwrap();
     assert!(title.bold, "title should be bold");
     assert!(!body.bold, "oblique body should not be bold");
 }

@@ -28,32 +28,47 @@ fn converted() -> (PathBuf, String, String) {
 #[test]
 fn the_note_text_lives_in_the_footnotes_part() {
     let (_p, _doc, notes) = converted();
-    assert!(notes.contains("Statement of A. Example"), "note not in footnotes.xml: {notes}");
+    assert!(
+        notes.contains("Statement of A. Example"),
+        "note not in footnotes.xml: {notes}"
+    );
 }
 
 #[test]
 fn the_body_carries_a_footnote_reference() {
     let (_p, doc, _n) = converted();
-    assert!(doc.contains("footnoteReference"), "no reference run in the body");
+    assert!(
+        doc.contains("footnoteReference"),
+        "no reference run in the body"
+    );
 }
 
 #[test]
 fn the_note_is_not_left_in_the_body() {
     let (_p, doc, _n) = converted();
-    assert!(!doc.contains("Statement of A. Example"), "note leaked into the body");
+    assert!(
+        !doc.contains("Statement of A. Example"),
+        "note leaked into the body"
+    );
 }
 
 #[test]
 fn the_mark_is_not_left_in_the_body_text() {
     // The superscript "1" must become a reference, not a literal character.
     let (_p, doc, _n) = converted();
-    assert!(doc.contains("signed on 12 March."), "body text was altered: {doc}");
+    assert!(
+        doc.contains("signed on 12 March."),
+        "body text was altered: {doc}"
+    );
 }
 
 #[test]
 fn the_separator_rule_is_not_a_paragraph() {
     let (_p, doc, _n) = converted();
-    assert!(!doc.contains("------------"), "the note separator leaked into the body");
+    assert!(
+        !doc.contains("------------"),
+        "the note separator leaked into the body"
+    );
 }
 
 #[test]

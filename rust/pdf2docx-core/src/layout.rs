@@ -52,7 +52,10 @@ pub fn profile(lines: &[Line]) -> Profile {
     // The most common page size wins: a stray cover page should not set the
     // geometry for the document.
     let mut sizes: std::collections::HashMap<(u32, u32), usize> = std::collections::HashMap::new();
-    for l in lines.iter().filter(|l| l.page_width > 0.0 && l.page_height > 0.0) {
+    for l in lines
+        .iter()
+        .filter(|l| l.page_width > 0.0 && l.page_height > 0.0)
+    {
         *sizes
             .entry(((l.page_width * 10.0) as u32, (l.page_height * 10.0) as u32))
             .or_default() += 1;
@@ -69,14 +72,25 @@ pub fn profile(lines: &[Line]) -> Profile {
         .filter(|l| !l.text.trim().is_empty())
         .filter(|l| l.page_height <= 0.0 || !note_zone(l))
         .collect();
-    let usable: Vec<&Line> = if body.is_empty() { lines.iter().collect() } else { body };
+    let usable: Vec<&Line> = if body.is_empty() {
+        lines.iter().collect()
+    } else {
+        body
+    };
     if usable.is_empty() {
         return p;
     }
 
     p.body_size = body_size(lines);
-    p.margin_left = usable.iter().map(|l| l.x0).fold(f32::INFINITY, f32::min).max(FLOOR);
-    let edge = percentile(usable.iter().filter(|l| l.x1 > 0.0).map(|l| l.x1).collect(), 0.9);
+    p.margin_left = usable
+        .iter()
+        .map(|l| l.x0)
+        .fold(f32::INFINITY, f32::min)
+        .max(FLOOR);
+    let edge = percentile(
+        usable.iter().filter(|l| l.x1 > 0.0).map(|l| l.x1).collect(),
+        0.9,
+    );
     let right_gap = p.page_width - edge;
     // Likewise on the right: only trust the gap if the text reaches past the
     // middle of the page. A page of short lines is ragged, not narrow-margined,

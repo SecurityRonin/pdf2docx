@@ -24,7 +24,11 @@ fn page_size_matches_the_source_letter_page() {
     let lines = pdf2docx_core::extract::extract(&fixture()).unwrap();
     let p = pdf2docx_core::layout::profile(&lines);
     assert!((p.page_width - 612.0).abs() < 1.0, "width {}", p.page_width);
-    assert!((p.page_height - 792.0).abs() < 1.0, "height {}", p.page_height);
+    assert!(
+        (p.page_height - 792.0).abs() < 1.0,
+        "height {}",
+        p.page_height
+    );
 }
 
 #[test]
@@ -33,7 +37,10 @@ fn margins_are_measured_not_assumed() {
     let p = pdf2docx_core::layout::profile(&lines);
     assert!((p.margin_left - 90.0).abs() < 2.0, "left {}", p.margin_left);
     // 1134 twips = 56.7pt is the old constant; 90pt is 1800 twips.
-    assert!((p.margin_left - 56.7).abs() > 20.0, "margin looks hard-coded");
+    assert!(
+        (p.margin_left - 56.7).abs() > 20.0,
+        "margin looks hard-coded"
+    );
 }
 
 #[test]
@@ -43,9 +50,15 @@ fn the_docx_page_matches_the_source() {
     convert(&fixture(), &out).unwrap();
     let doc = part(&out, "word/document.xml");
     // 612pt x 792pt at 20 twips/pt.
-    assert!(doc.contains(r#"<w:pgSz w:w="12240" w:h="15840""#), "page size not applied: {doc}");
+    assert!(
+        doc.contains(r#"<w:pgSz w:w="12240" w:h="15840""#),
+        "page size not applied: {doc}"
+    );
     assert!(doc.contains(r#"<w:pgMar w:top="#), "no margin block");
-    assert!(!doc.contains(r#"w:left="1134""#), "margins are still the old constant");
+    assert!(
+        !doc.contains(r#"w:left="1134""#),
+        "margins are still the old constant"
+    );
 }
 
 #[test]

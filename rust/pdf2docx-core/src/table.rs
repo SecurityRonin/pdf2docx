@@ -26,7 +26,11 @@ pub struct Table {
 
 impl Table {
     fn new(rows: usize, cols: usize) -> Self {
-        Self { rows, cols, grid: vec![vec![String::new(); cols]; rows] }
+        Self {
+            rows,
+            cols,
+            grid: vec![vec![String::new(); cols]; rows],
+        }
     }
 }
 
@@ -43,7 +47,12 @@ fn is_vertical(s: &Segment) -> bool {
 }
 
 fn bbox(s: &Segment) -> (f32, f32, f32, f32) {
-    (s.x0.min(s.x1), s.y0.min(s.y1), s.x0.max(s.x1), s.y0.max(s.y1))
+    (
+        s.x0.min(s.x1),
+        s.y0.min(s.y1),
+        s.x0.max(s.x1),
+        s.y0.max(s.y1),
+    )
 }
 
 fn touches(a: &Segment, b: &Segment) -> bool {
@@ -94,8 +103,20 @@ fn components(segments: &[Segment]) -> Vec<Vec<usize>> {
 
 /// Rebuild a grid from one component, or nothing if it does not enclose cells.
 fn grid_of(group: &[&Segment]) -> Option<(Vec<f32>, Vec<f32>)> {
-    let xs = cluster(group.iter().filter(|s| is_vertical(s)).map(|s| s.x0).collect());
-    let ys = cluster(group.iter().filter(|s| is_horizontal(s)).map(|s| s.y0).collect());
+    let xs = cluster(
+        group
+            .iter()
+            .filter(|s| is_vertical(s))
+            .map(|s| s.x0)
+            .collect(),
+    );
+    let ys = cluster(
+        group
+            .iter()
+            .filter(|s| is_horizontal(s))
+            .map(|s| s.y0)
+            .collect(),
+    );
     if xs.len() < 2 || ys.len() < 2 {
         return None;
     }
@@ -106,9 +127,7 @@ fn grid_of(group: &[&Segment]) -> Option<(Vec<f32>, Vec<f32>)> {
 ///
 /// Returns the tables and the indices of the lines they consumed, so the caller
 /// can place a table where its first line was instead of appending it.
-pub fn detect(lines: &[crate::structure::Line], segments: &[Segment])
-    -> (Vec<Table>, Vec<bool>)
-{
+pub fn detect(lines: &[crate::structure::Line], segments: &[Segment]) -> (Vec<Table>, Vec<bool>) {
     let mut tables = Vec::new();
     let mut consumed = vec![false; lines.len()];
     if segments.is_empty() {
@@ -117,14 +136,21 @@ pub fn detect(lines: &[crate::structure::Line], segments: &[Segment])
 
     for group in components(segments) {
         let group: Vec<&Segment> = group.iter().map(|i| &segments[*i]).collect();
-        let Some((xs, ys)) = grid_of(&group) else { continue };
+        let Some((xs, ys)) = grid_of(&group) else {
+            continue;
+        };
         let page = group[0].page;
         let height = group[0].page_height;
         let rows = ys.len() - 1;
         let cols = xs.len() - 1;
         let mut table = Table::new(rows, cols);
         let (bx0, by0, bx1, by1) = group.iter().fold(
-            (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY),
+            (
+                f32::INFINITY,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+                f32::NEG_INFINITY,
+            ),
             |acc, s| {
                 let (a, b, c, d) = bbox(s);
                 (acc.0.min(a), acc.1.min(b), acc.2.max(c), acc.3.max(d))
