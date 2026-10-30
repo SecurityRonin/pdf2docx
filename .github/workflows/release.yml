@@ -127,23 +127,34 @@ jobs:
             --key-id "$NOTARY_KEY_ID" \
             --issuer "$NOTARY_ISSUER_ID" \
             --wait
-          # The notarization ticket can lag the "Accepted" status by a few
-          # seconds, and stapling then fails with error 68. Observed once on
-          # x86_64 while arm64 stapled cleanly on the same run. Retry with
-          # backoff, then fail: an unstapled app is still notarized, but it will
-          # not validate without a network connection.
-          for attempt in 1 2 3 4 5; do
-            if xcrun stapler staple "$APP"; then
-              break
-            fi
-            if [ "$attempt" = 5 ]; then
-              echo "stapling failed after 5 attempts" >&2
-              exit 1
-            fi
-            echo "staple attempt $attempt failed; retrying in $((attempt * 10))s" >&2
-            sleep $((attempt * 10))
-          done
-          xcrun stapler validate "$APP"
+          # `stapler validate` asks Apple's ticket-delivery service over the
+          # network. Observed twice: the app stapled cleanly, then validate
+          # failed with Error 68 whose real cause was
+          #   NSURLErrorDomain Code=-1005 "The network connection was lost"
+          # against api.apple-cloudkit.com. Apple's CDN being briefly
+          # unreachable is not a property of the artifact, so it must not fail
+          # the build — but it must not be silent either.
+          retry() {
+            local n=1
+            until "$@"; do
+              if [ "$n" -ge 5 ]; then
+                return 1
+              fi
+              echo "  '$*' failed (attempt $n); retrying in $((n * 10))s" >&2
+              sleep $((n * 10))
+              n=$((n + 1))
+            done
+          }
+
+          retry xcrun stapler staple "$APP" || {
+            echo "stapling failed after 5 attempts" >&2
+            exit 1
+          }
+          if ! retry xcrun stapler validate "$APP"; then
+            echo "::warning::stapler validate could not reach Apple; the ticket is attached, so the local assessment below decides"
+          fi
+          # Local gate: fails the build if the bundle is not signed and
+          # enforceable, which is what actually governs whether it launches.
           spctl --assess --type execute --verbose=2 "$APP"
 
       # Re-create the dmg AFTER stapling so the shipped image carries the ticket.
