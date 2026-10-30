@@ -1,0 +1,14 @@
+[package]
+name = "pdf2docx-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Convert a PDF into a DOCX with real Word structure"
+
+[dependencies]
+lopdf = "0.34"
+zip = "2.4"
+
+[lints]
+workspace = true
