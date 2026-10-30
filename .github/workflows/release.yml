@@ -127,7 +127,22 @@ jobs:
             --key-id "$NOTARY_KEY_ID" \
             --issuer "$NOTARY_ISSUER_ID" \
             --wait
-          xcrun stapler staple "$APP"
+          # The notarization ticket can lag the "Accepted" status by a few
+          # seconds, and stapling then fails with error 68. Observed once on
+          # x86_64 while arm64 stapled cleanly on the same run. Retry with
+          # backoff, then fail: an unstapled app is still notarized, but it will
+          # not validate without a network connection.
+          for attempt in 1 2 3 4 5; do
+            if xcrun stapler staple "$APP"; then
+              break
+            fi
+            if [ "$attempt" = 5 ]; then
+              echo "stapling failed after 5 attempts" >&2
+              exit 1
+            fi
+            echo "staple attempt $attempt failed; retrying in $((attempt * 10))s" >&2
+            sleep $((attempt * 10))
+          done
           xcrun stapler validate "$APP"
           spctl --assess --type execute --verbose=2 "$APP"
 
