@@ -50,6 +50,9 @@ emitted directly — which is what the Python does anyway.
 - **`x1` includes a trailing space.** The advance is accumulated for every code
   in the string, including trailing whitespace that is then trimmed from the
   text, so `x1` can be one space wider than the visible line.
+- **Merged cells are untested.** The detector assumes a full rectangular grid
+  of rules; a cell spanning columns or rows has no fixture behind it, so its
+  behaviour is unmeasured rather than merely imperfect.
 - **Only ruled tables.** A table whose cells are separated by whitespace alone
   has no line work to find and comes through as paragraphs.
 - **One `BT`..`ET` block is one line.** Text drawn with an unusual matrix is
