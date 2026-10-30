@@ -6,13 +6,14 @@ instead of a Tauri shell plus a 32 MB frozen Python engine.
 Built TDD: every module below began as a failing test.
 
 ```bash
-cargo test          # 39 tests
+cargo test          # 44 tests
 ```
 
 ## What is ported
 
 | Module | What it does | Tests |
 |---|---|---|
+| `numbering` | section numbers stripped from the text and restored by a decimal multilevel list; lettered headings keep their own label | 5 (tests) |
 | `structure` | section numbering → heading levels, digits stripped; lists by indent/bullet/label; lettered sections; body/text discrimination; footnote zone and superscript-marker pairing | 13 |
 | `extract` | PDF text lines via `lopdf`: `Tf`/`Tm`/`Td`/`Tj`/`TJ`, `/Widths` advances, `/ToUnicode` CMaps, bold from the font name | 5 |
 | `table` | ruled tables from the page's line work: connected rules → grid → text read by position; bodies of text that enclose no text are not tables | 4 |
@@ -35,7 +36,7 @@ slice, not parity:
   justified, so output is left-aligned
 - **font matching and tracking** — no installed-font scan, no metrics fitting
 - **the two modes** — no `semantic` / `faithful` split; output is single-mode
-- **numbering restarts**, multilevel lists, lettered numbering (`H.`) in Word
+- **numbering restarts** — a list that restarts mid-document keeps counting
 
 `docx-rs` was the intended writer and is not available offline here, so OOXML is
 emitted directly — which is what the Python does anyway.

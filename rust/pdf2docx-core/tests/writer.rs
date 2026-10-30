@@ -30,6 +30,7 @@ fn sample() -> Doc {
                 level: 0,
                 marker: None,
                 table: None,
+                numbered: false,
             },
             Block {
                 kind: Kind::Heading,
@@ -37,6 +38,7 @@ fn sample() -> Doc {
                 level: 1,
                 marker: None,
                 table: None,
+                numbered: false,
             },
             Block {
                 kind: Kind::Heading,
@@ -44,6 +46,7 @@ fn sample() -> Doc {
                 level: 2,
                 marker: None,
                 table: None,
+                numbered: false,
             },
             Block {
                 kind: Kind::Body,
@@ -51,6 +54,7 @@ fn sample() -> Doc {
                 level: 0,
                 marker: None,
                 table: None,
+                numbered: false,
             },
             Block {
                 kind: Kind::ListItem,
@@ -58,6 +62,7 @@ fn sample() -> Doc {
                 level: 0,
                 marker: None,
                 table: None,
+                numbered: false,
             },
             Block {
                 kind: Kind::ListItem,
@@ -65,6 +70,7 @@ fn sample() -> Doc {
                 level: 0,
                 marker: None,
                 table: None,
+                numbered: false,
             },
         ],
     }

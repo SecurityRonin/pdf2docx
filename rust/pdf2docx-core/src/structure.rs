@@ -57,6 +57,10 @@ pub struct Block {
     pub marker: Option<String>,
     /// Cell contents, for a table block.
     pub table: Option<crate::table::Table>,
+    /// True when the source carried a section number, which was stripped from
+    /// the text so Word could supply it. A lettered heading keeps its own label
+    /// and must not also be given a decimal one.
+    pub numbered: bool,
 }
 
 #[derive(Debug, Default)]
@@ -435,6 +439,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                     level: 0,
                     marker: None,
                     table: Some(tables[ti].clone()),
+                    numbered: false,
                 });
             }
             continue;
@@ -453,6 +458,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                         level: depth,
                         marker: mk.clone(),
                         table: None,
+                        numbered: true,
                     });
                 }
                 None => {
@@ -467,6 +473,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                         level,
                         marker: mk.clone(),
                         table: None,
+                        numbered: false,
                     });
                 }
             }
@@ -480,6 +487,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                 level: 1,
                 marker: mk.clone(),
                 table: None,
+                numbered: false,
             });
             continue;
         }
@@ -503,6 +511,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                 level: 0,
                 marker: mk.clone(),
                 table: None,
+                numbered: false,
             });
             continue;
         }
@@ -514,6 +523,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
                     level: 0,
                     marker: mk.clone(),
                     table: None,
+                    numbered: false,
                 });
                 continue;
             }
@@ -524,6 +534,7 @@ pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc 
             level: 0,
             marker: mk.clone(),
             table: None,
+            numbered: false,
         });
     }
     Doc {

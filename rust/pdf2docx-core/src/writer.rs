@@ -69,7 +69,18 @@ fn paragraph(b: &Block, note: Option<usize>) -> String {
         }
         Kind::Heading => {
             let n = b.level.clamp(1, 6);
-            format!(r#"<w:p><w:pPr><w:pStyle w:val="Heading{n}"/></w:pPr>{body}</w:p>"#)
+            // The digits were stripped so Word could supply them; this is the
+            // supply. Applied per paragraph rather than in the style so a
+            // lettered heading ("H. REDACTIONS") is not given a decimal number.
+            let num = if b.numbered {
+                format!(
+                    r#"<w:numPr><w:ilvl w:val="{}"/><w:numId w:val="2"/></w:numPr>"#,
+                    n - 1
+                )
+            } else {
+                String::new()
+            };
+            format!(r#"<w:p><w:pPr><w:pStyle w:val="Heading{n}"/>{num}</w:pPr>{body}</w:p>"#)
         }
         Kind::ListItem => format!(
             r#"<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>{body}</w:p>"#
@@ -135,12 +146,33 @@ fn styles_xml(layout: &crate::layout::Profile) -> String {
     s
 }
 
-fn numbering_xml() -> &'static str {
-    r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+fn numbering_xml() -> String {
+    let mut levels = String::from(r#"<w:abstractNum w:abstractNumId="1">"#);
+    for i in 0..6u32 {
+        // "1." at the top level, "1.1" below it: the dot binds the last number
+        // to the text, so only the top level takes one after the number.
+        let mut text: String = (1..=i + 1)
+            .map(|n| format!("%{n}"))
+            .collect::<Vec<_>>()
+            .join(".");
+        if i == 0 {
+            text.push('.');
+        }
+        levels.push_str(&format!(
+            r#"<w:lvl w:ilvl="{i}"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="{text}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="{left}" w:hanging="360"/></w:pPr></w:lvl>"#,
+            left = 720 * (i + 1)
+        ));
+    }
+    levels.push_str("</w:abstractNum>");
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
 <w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>
 <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+{levels}
+<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
 </w:numbering>"#
+    )
 }
 
 /// Footnote ids per block, and the notes in the order Word must show them.
@@ -226,7 +258,7 @@ pub fn write(doc: &Doc, path: &Path) -> Result<(), String> {
     put(&mut zip, "word/document.xml", document_xml(doc, &ids))?;
     put(&mut zip, "word/footnotes.xml", footnotes_xml(&notes))?;
     put(&mut zip, "word/styles.xml", styles_xml(&doc.layout))?;
-    put(&mut zip, "word/numbering.xml", numbering_xml().to_string())?;
+    put(&mut zip, "word/numbering.xml", numbering_xml())?;
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())
 }
