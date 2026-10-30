@@ -61,6 +61,31 @@ jobs:
       - name: Freeze the conversion engine
         run: ./app/scripts/build-engine.sh
 
+      # The tag is the version. Without this the app carries whatever
+      # tauri.conf.json happens to say, so a v0.1.1 release shipped Windows
+      # installers named 0.1.0 while its macOS DMGs were named 0.1.1.
+      - name: Align the app version with the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - "$TAG" <<'PYEOF'
+          import json, pathlib, re, sys
+          version = sys.argv[1].lstrip("v")
+          conf = pathlib.Path("app/src-tauri/tauri.conf.json")
+          data = json.loads(conf.read_text())
+          data["version"] = version
+          conf.write_text(json.dumps(data, indent=2) + "\n")
+          manifest = pathlib.Path("app/src-tauri/Cargo.toml")
+          text = manifest.read_text()
+          text = re.sub(r'(?m)^version = ".*?"', f'version = "{version}"', text, count=1)
+          manifest.write_text(text)
+          print("app version ->", version)
+          PYEOF
+          grep -m1 '"version"' app/src-tauri/tauri.conf.json
+
       - name: Build the app
         run: |
           cd app
@@ -210,6 +235,30 @@ jobs:
       - name: Freeze the conversion engine
         shell: bash
         run: ./app/scripts/build-engine.sh
+
+      # The tag is the version. Without this the app carries whatever
+      # tauri.conf.json happens to say, so a v0.1.1 release shipped Windows
+      # installers named 0.1.0 while its macOS DMGs were named 0.1.1.
+      - name: Align the app version with the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          python - "$TAG" <<'PYEOF'
+          import json, pathlib, re, sys
+          version = sys.argv[1].lstrip("v")
+          conf = pathlib.Path("app/src-tauri/tauri.conf.json")
+          data = json.loads(conf.read_text())
+          data["version"] = version
+          conf.write_text(json.dumps(data, indent=2) + "\n")
+          manifest = pathlib.Path("app/src-tauri/Cargo.toml")
+          text = manifest.read_text()
+          text = re.sub(r'(?m)^version = ".*?"', f'version = "{version}"', text, count=1)
+          manifest.write_text(text)
+          print("app version ->", version)
+          PYEOF
+          grep -m1 '"version"' app/src-tauri/tauri.conf.json
 
       - name: Build the app
         shell: bash
