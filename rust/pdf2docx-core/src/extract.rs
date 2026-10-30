@@ -240,6 +240,7 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                     top: height - y,
                     bold: font_name.to_lowercase().contains("bold"),
                     page: (pno - 1) as usize,
+                    page_height: height,
                 });
             }
             text.clear();

@@ -6,16 +6,16 @@ instead of a Tauri shell plus a 32 MB frozen Python engine.
 Built TDD: every module below began as a failing test.
 
 ```bash
-cargo test          # 25 tests
+cargo test          # 31 tests
 ```
 
 ## What is ported
 
 | Module | What it does | Tests |
 |---|---|---|
-| `structure` | section numbering → heading levels, digits stripped; lists by indent/bullet/label; lettered sections; body/text discrimination | 11 |
+| `structure` | section numbering → heading levels, digits stripped; lists by indent/bullet/label; lettered sections; body/text discrimination; footnote zone and superscript-marker pairing | 13 |
 | `extract` | PDF text lines via `lopdf`: `Tf`/`Tm`/`Td`/`Tj`/`TJ`, `/Widths` advances, `/ToUnicode` CMaps, bold from the font name | 5 |
-| `writer` | OOXML package: `Heading 1..6`, `Title`, native bullet numbering, correct size ladder | 7 |
+| `writer` | OOXML package: `Heading 1..6`, `Title`, native bullet numbering, correct size ladder, `footnotes.xml` with real reference runs | 7 |
 | `convert` | PDF → lines → blocks → DOCX | 2 |
 
 Verified end to end by rendering the produced DOCX through LibreOffice and reading
@@ -29,7 +29,6 @@ The Python implementation does substantially more. This is a working vertical
 slice, not parity:
 
 - **tables** — no detection; table text flows as paragraphs
-- **footnotes** — parsed by neither extractor nor writer
 - **layout profile** — page size, margins, leading and justification are fixed,
   not read from the source
 - **font matching and tracking** — no installed-font scan, no metrics fitting
@@ -37,6 +36,16 @@ slice, not parity:
 - **numbering restarts**, multilevel lists, lettered numbering (`H.`) in Word
 
 `docx-rs` was the intended writer and is not available offline here, so OOXML is
-emitted directly — which is what the Python does anyway. `docx-rs` does have
-`Footnote`/`Footnotes` and `Numbering`, so the footnote gap is work, not a
-blocker.
+emitted directly — which is what the Python does anyway.
+
+## Known limitations, measured rather than assumed
+
+- **Base-14 fonts carry no `/Widths`.** A PDF set in non-embedded Helvetica,
+  Times or Courier gives no advance table, so every glyph falls back to a
+  500-unit default and a line's computed `x1` over-reports. `x0` comes from the
+  text matrix and is exact, so geometry rules are written against `x0`.
+- **`x1` includes a trailing space.** The advance is accumulated for every code
+  in the string, including trailing whitespace that is then trimmed from the
+  text, so `x1` can be one space wider than the visible line.
+- **One `BT`..`ET` block is one line.** Text drawn with an unusual matrix is
+  approximated rather than rejected.

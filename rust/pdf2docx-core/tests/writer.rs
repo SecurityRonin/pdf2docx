@@ -21,13 +21,14 @@ fn read_part(path: &PathBuf, part: &str) -> String {
 
 fn sample() -> Doc {
     Doc {
+        notes: Vec::new(),
         blocks: vec![
-            Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0 },
-            Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1 },
-            Block { kind: Kind::Heading, text: "Systems Covered".into(), level: 2 },
-            Block { kind: Kind::Body, text: "The review covered three systems.".into(), level: 0 },
-            Block { kind: Kind::ListItem, text: "Mail server".into(), level: 0 },
-            Block { kind: Kind::ListItem, text: "File server".into(), level: 0 },
+            Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0, marker: None },
+            Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1, marker: None },
+            Block { kind: Kind::Heading, text: "Systems Covered".into(), level: 2, marker: None },
+            Block { kind: Kind::Body, text: "The review covered three systems.".into(), level: 0, marker: None },
+            Block { kind: Kind::ListItem, text: "Mail server".into(), level: 0, marker: None },
+            Block { kind: Kind::ListItem, text: "File server".into(), level: 0, marker: None },
         ],
     }
 }

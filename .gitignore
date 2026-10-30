@@ -13,3 +13,7 @@ research/*.md
 research/*.log
 research/*.docx
 research/*.pdf
+
+# Rust build output
+rust/target/
+target/

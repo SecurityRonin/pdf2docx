@@ -23,11 +23,14 @@ pub struct Line {
     pub top: f32,
     pub bold: bool,
     pub page: usize,
+    /// Height of the page the line sits on; the note zone is defined from the
+    /// bottom of the page, so a line cannot be classified without it.
+    pub page_height: f32,
 }
 
 impl Line {
     pub fn new(text: &str, size: f32, x0: f32, x1: f32, top: f32) -> Self {
-        Self { text: text.to_string(), size, x0, x1, top, bold: false, page: 0 }
+        Self { text: text.to_string(), size, x0, x1, top, bold: false, page: 0, page_height: 0.0 }
     }
 }
 
@@ -37,11 +40,15 @@ pub struct Block {
     pub text: String,
     /// 1-based heading depth; 0 means "document title".
     pub level: u8,
+    /// Footnote marker this block carries ("1"), if any.
+    pub marker: Option<String>,
 }
 
 #[derive(Debug, Default)]
 pub struct Doc {
     pub blocks: Vec<Block>,
+    /// Numbered notes (`"1" -> "Statement of ..."`), paired by number.
+    pub notes: Vec<(String, String)>,
 }
 
 const TERMINAL: [char; 6] = ['.', ';', ',', ':', '?', '!'];
@@ -79,12 +86,28 @@ pub fn split_section(text: &str) -> Option<(u8, String)> {
     Some((depth, rest.trim().to_string()))
 }
 
-/// The document's body size: the most-used size, measured by characters so one
-/// large title cannot win.
+/// The document's body size: the size carrying the most characters, measured
+/// over the body region of the page.
+///
+/// Measuring over the whole page lets a long footnote out-vote the prose it
+/// annotates — 55 characters of note against 44 of text — and taking the note's
+/// size as the body then hides every note from the note zone, because nothing
+/// is smaller than itself. The bottom quarter of the page is excluded from the
+/// vote; text there is still kept, it just does not define the prose.
 pub fn body_size(lines: &[Line]) -> f32 {
+    let region: Vec<&Line> = lines
+        .iter()
+        .filter(|l| !l.text.trim().is_empty())
+        .filter(|l| l.page_height <= 0.0 || l.top <= l.page_height * NOTE_ZONE)
+        .collect();
+    let subset: Vec<&Line> = if region.is_empty() {
+        lines.iter().filter(|l| !l.text.trim().is_empty()).collect()
+    } else {
+        region
+    };
     let mut weight: HashMap<u32, usize> = HashMap::new();
-    for l in lines {
-        *weight.entry((l.size * 10.0).round() as u32).or_default() += l.text.len();
+    for l in subset {
+        *weight.entry((l.size * 10.0).round() as u32).or_default() += l.text.chars().count();
     }
     weight
         .into_iter()
@@ -198,36 +221,143 @@ fn is_lettered_label(text: &str) -> bool {
     !label.is_empty() && !label.chars().all(|c| c.is_ascii_digit())
 }
 
+const NOTE_ZONE: f32 = 0.75;
+
+/// A horizontal rule: only dashes, em dashes or underscores. Never prose, and
+/// never worth carrying into the output as a paragraph.
+fn is_rule(text: &str) -> bool {
+    let t = text.trim();
+    t.chars().count() >= 3
+        && t.chars().all(|c| c == '-' || c == '_' || c == '\u{2014}' || c == '\u{2013}')
+}
+
+/// "1  Statement of ..." -> ("1", "Statement of ...").
+fn split_note(text: &str) -> Option<(String, String)> {
+    let t = text.trim();
+    let digits: String = t.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() || digits.len() > 3 {
+        return None;
+    }
+    let rest = &t[digits.len()..];
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let body = rest.trim();
+    if body.is_empty() {
+        return None;
+    }
+    Some((digits, body.to_string()))
+}
+
+/// Footnotes sit below the body measure *and* are set smaller than it.
+///
+/// Position alone is not enough: a document whose prose runs to the foot of the
+/// page put 20.5% of its text there, and an earlier build discarded all of it.
+fn in_note_zone(l: &Line, body: f32) -> bool {
+    l.page_height > 0.0 && l.top > l.page_height * NOTE_ZONE && l.size < body * 0.9
+}
+
+/// Re-attach superscript marks to the line they belong to.
+///
+/// A PDF has no link between a mark and its paragraph — the mark is a separate
+/// text object drawn a few points above the baseline. The link is geometric:
+/// same page, vertically overlapping, and starting where the host line ends.
+///
+/// The mark sorts *before* its host in reading order, because it sits higher on
+/// the page, so the search runs in both directions.
+fn attach_markers(lines: Vec<Line>, body: f32) -> Vec<(Line, Option<String>)> {
+    let mut mark = vec![None::<String>; lines.len()];
+    let mut consumed = vec![false; lines.len()];
+    for i in 0..lines.len() {
+        let m = &lines[i];
+        let t = m.text.trim();
+        let candidate = !t.is_empty()
+            && t.len() <= 3
+            && t.chars().all(|c| c.is_ascii_digit())
+            && m.size < body * 0.85;
+        if !candidate {
+            continue;
+        }
+        let host = (0..lines.len())
+            .filter(|&j| j != i && !consumed[j])
+            .filter(|&j| {
+                let h = &lines[j];
+                h.page == m.page
+                    && h.size >= body * 0.9
+                    && (h.top - m.top).abs() <= body * 0.9
+                    // Measured from the host's *start*: a base-14 font carries
+                    // no /Widths, so x1 can over-report by a glyph, while x0
+                    // comes straight from the text matrix and is exact.
+                    && m.x0 >= h.x0 + (h.x1 - h.x0) * 0.5
+                    && m.x0 <= h.x1 + body
+            })
+            .min_by(|&a, &b| {
+                let da = (lines[a].top - m.top).abs();
+                let db = (lines[b].top - m.top).abs();
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        if let Some(j) = host {
+            mark[j] = Some(t.to_string());
+            consumed[i] = true;
+        }
+    }
+    lines
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| !consumed[*i])
+        .map(|(i, l)| (l, mark[i].clone()))
+        .collect()
+}
+
 pub fn classify(lines: &[Line]) -> Doc {
     let body = body_size(lines);
+
+    let mut notes: Vec<(String, String)> = Vec::new();
+    let mut kept: Vec<Line> = Vec::new();
+    for l in lines {
+        let t = l.text.trim();
+        if t.is_empty() || is_rule(t) {
+            continue;
+        }
+        if in_note_zone(l, body) {
+            if let Some((n, txt)) = split_note(t) {
+                notes.push((n, txt));
+                continue;
+            }
+        }
+        kept.push(l.clone());
+    }
+
+    let content = attach_markers(kept, body);
+
     let margin = margin(lines);
     let right = right_edge(lines);
-    let lists_ok = lines.iter().any(|l| l.text.trim().chars().next()
+    let lists_ok = content.iter().any(|(l, _)| l.text.trim().chars().next()
         .map(|c| BULLETS.contains(&c)).unwrap_or(false));
     let mut blocks: Vec<Block> = Vec::new();
     let mut seen_numbered = false;
-    let content: Vec<&Line> = lines.iter().filter(|l| !l.text.trim().is_empty()).collect();
 
-    for (i, l) in content.iter().enumerate() {
+    for (i, (l, mk)) in content.iter().enumerate() {
         let t = l.text.trim();
-        let nxt = content.get(i + 1).copied();
+        let nxt = content.get(i + 1).map(|(l, _)| l);
+        let prior = if i > 0 { Some(&content[i - 1].0) } else { None };
 
         if is_heading(l, body) {
             match split_section(t) {
                 Some((depth, rest)) => {
                     seen_numbered = true;
-                    blocks.push(Block { kind: Kind::Heading, text: rest, level: depth });
+                    blocks.push(Block { kind: Kind::Heading, text: rest, level: depth, marker: mk.clone() });
                 }
                 None => {
                     let level = if !seen_numbered && blocks.is_empty() { 0 } else { 1 };
-                    blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level });
+                    blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level, marker: mk.clone() });
                 }
             }
             continue;
         }
 
         if is_lettered_section(t) {
-            blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level: 1 });
+            blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level: 1, marker: mk.clone() });
             continue;
         }
 
@@ -235,19 +365,19 @@ pub fn classify(lines: &[Line]) -> Doc {
         let bulleted = t.chars().next().map(|c| BULLETS.contains(&c)).unwrap_or(false);
         let numbered = item.is_some() && !bulleted && (lists_ok || is_lettered_label(t));
         let neighbour_indented = nxt.map(|n| is_indented(n, margin, right)).unwrap_or(false)
-            || (i > 0 && is_indented(content[i - 1], margin, right));
+            || prior.map(|p| is_indented(p, margin, right)).unwrap_or(false);
         if is_indented(l, margin, right) && neighbour_indented {
             let text = item.unwrap_or_else(|| t.to_string());
-            blocks.push(Block { kind: Kind::ListItem, text, level: 0 });
+            blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone() });
             continue;
         }
         if let Some(text) = item {
             if bulleted || numbered {
-                blocks.push(Block { kind: Kind::ListItem, text, level: 0 });
+                blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone() });
                 continue;
             }
         }
-        blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0 });
+        blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0, marker: mk.clone() });
     }
-    Doc { blocks }
+    Doc { blocks, notes }
 }

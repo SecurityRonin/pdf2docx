@@ -1,0 +1,8 @@
+# Byte-exact test fixtures must never be line-ending translated. Without this,
+# git classifies a PDF as text when its first NUL falls past the 8000-byte scan
+# window and rewrites its LF bytes to CRLF on a Windows checkout.
+*.pdf   -text
+*.docx  -text
+*.png   -text
+*.jpg   -text
+rust/pdf2docx-core/tests/data/** -text
