@@ -24,12 +24,12 @@ fn sample() -> Doc {
         notes: Vec::new(),
         layout: Default::default(),
         blocks: vec![
-            Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0, marker: None },
-            Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1, marker: None },
-            Block { kind: Kind::Heading, text: "Systems Covered".into(), level: 2, marker: None },
-            Block { kind: Kind::Body, text: "The review covered three systems.".into(), level: 0, marker: None },
-            Block { kind: Kind::ListItem, text: "Mail server".into(), level: 0, marker: None },
-            Block { kind: Kind::ListItem, text: "File server".into(), level: 0, marker: None },
+            Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0, marker: None, table: None },
+            Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1, marker: None, table: None },
+            Block { kind: Kind::Heading, text: "Systems Covered".into(), level: 2, marker: None, table: None },
+            Block { kind: Kind::Body, text: "The review covered three systems.".into(), level: 0, marker: None, table: None },
+            Block { kind: Kind::ListItem, text: "Mail server".into(), level: 0, marker: None, table: None },
+            Block { kind: Kind::ListItem, text: "File server".into(), level: 0, marker: None, table: None },
         ],
     }
 }

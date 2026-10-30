@@ -27,6 +27,29 @@ fn run(text: &str) -> String {
     format!(r#"<w:r><w:t xml:space="preserve">{}</w:t></w:r>"#, esc(text))
 }
 
+fn table_xml(t: &crate::table::Table) -> String {
+    let borders = r#"<w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders>"#;
+    let mut s = format!(
+        r#"<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>{borders}</w:tblPr><w:tblGrid>"#
+    );
+    for _ in 0..t.cols {
+        s.push_str(r#"<w:gridCol/>"#);
+    }
+    s.push_str("</w:tblGrid>");
+    for row in &t.grid {
+        s.push_str("<w:tr>");
+        for cell in row {
+            s.push_str(&format!(
+                r#"<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr><w:p>{}</w:p></w:tc>"#,
+                run(cell)
+            ));
+        }
+        s.push_str("</w:tr>");
+    }
+    s.push_str("</w:tbl>");
+    s
+}
+
 fn paragraph(b: &Block, note: Option<usize>) -> String {
     let mut body = run(&b.text);
     if let Some(id) = note {
@@ -37,6 +60,7 @@ fn paragraph(b: &Block, note: Option<usize>) -> String {
         ));
     }
     match b.kind {
+        Kind::Table => return b.table.as_ref().map(table_xml).unwrap_or_default(),
         Kind::Heading if b.level == 0 => {
             format!(r#"<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>{body}</w:p>"#)
         }
@@ -153,6 +177,10 @@ fn document_xml(doc: &Doc, ids: &[Option<usize>]) -> String {
     );
     for (i, b) in doc.blocks.iter().enumerate() {
         s.push_str(&paragraph(b, ids.get(i).copied().flatten()));
+    }
+    // Word requires a paragraph after a table that ends the body.
+    if matches!(doc.blocks.last().map(|b| b.kind), Some(Kind::Table)) {
+        s.push_str("<w:p/>");
     }
     let tw = |pt: f32| (pt * 20.0).round() as i64;
     let l = doc.layout;

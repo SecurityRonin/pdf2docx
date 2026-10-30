@@ -1,14 +1,14 @@
 //! Bullets and sub-items are list entries; a list is a run, and indent alone is
 //! not evidence of one. Each rule here was bought with a measurement on a real
 //! document in the Python implementation.
-use pdf2docx_core::structure::{classify, Kind, Line};
+use pdf2docx_core::structure::{classify_with, Kind, Line};
 
 fn l(text: &str, size: f32, x0: f32, x1: f32, top: f32) -> Line {
     Line::new(text, size, x0, x1, top)
 }
 
 fn kinds(ls: &[Line]) -> Vec<Kind> {
-    classify(ls).blocks.iter().map(|b| b.kind).collect()
+    classify_with(ls, &[]).blocks.iter().map(|b| b.kind).collect()
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn the_list_glyph_is_not_kept_in_the_text() {
         l("• Mail server", 10.0, 78.0, 160.0, 120.0),
         l("• File server", 10.0, 78.0, 160.0, 134.0),
     ];
-    let d = classify(&ls);
+    let d = classify_with(&ls, &[]);
     let item = d.blocks.iter().find(|b| b.kind == Kind::ListItem).unwrap();
     assert_eq!(item.text, "Mail server");
 }
@@ -67,7 +67,7 @@ fn a_lettered_all_caps_line_is_a_heading_not_a_bullet() {
         l("Body paragraph that is long enough to fill the measure completely.", 12.0, 99.0, 500.0, 100.0),
         l("H. REDACTIONS APPLIED FOR", 12.0, 99.0, 330.0, 140.0),
     ];
-    let d = classify(&ls);
+    let d = classify_with(&ls, &[]);
     let h = d.blocks.iter().find(|b| b.kind == Kind::Heading).expect("no heading");
     assert_eq!(h.text, "H. REDACTIONS APPLIED FOR");
 }
@@ -79,7 +79,7 @@ fn parenthesised_letter_items_are_list_entries() {
         l("(a) Ingestion. Source documents are collected from the client.", 12.0, 99.0, 480.0, 120.0),
         l("(b) Processing and review. The documents are placed in a system.", 12.0, 99.0, 480.0, 134.0),
     ];
-    let d = classify(&ls);
+    let d = classify_with(&ls, &[]);
     let items: Vec<_> = d.blocks.iter().filter(|b| b.kind == Kind::ListItem).collect();
     assert_eq!(items.len(), 2, "{:?}", d.blocks);
     assert!(items[0].text.starts_with("Ingestion."));

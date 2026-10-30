@@ -11,6 +11,7 @@ pub enum Kind {
     Heading,
     Body,
     ListItem,
+    Table,
 }
 
 /// One text line as read from the PDF.
@@ -44,6 +45,8 @@ pub struct Block {
     pub level: u8,
     /// Footnote marker this block carries ("1"), if any.
     pub marker: Option<String>,
+    /// Cell contents, for a table block.
+    pub table: Option<crate::table::Table>,
 }
 
 #[derive(Debug, Default)]
@@ -319,7 +322,7 @@ fn attach_markers(lines: Vec<Line>, body: f32) -> Vec<(Line, Option<String>)> {
         .collect()
 }
 
-pub fn classify(lines: &[Line]) -> Doc {
+pub fn classify_with(lines: &[Line], segments: &[crate::table::Segment]) -> Doc {
     let body = body_size(lines);
 
     let mut notes: Vec<(String, String)> = Vec::new();
@@ -340,6 +343,30 @@ pub fn classify(lines: &[Line]) -> Doc {
 
     let content = attach_markers(kept, body);
 
+    // Tables are found from the page's line work and take their text with them,
+    // so the text is not also emitted as paragraphs.
+    let flat: Vec<Line> = content.iter().map(|(l, _)| l.clone()).collect();
+    let (tables, consumed) = crate::table::detect(&flat, segments);
+    let mut table_at: Vec<Option<usize>> = vec![None; flat.len()];
+    for ti in 0..tables.len() {
+        let _ = ti;
+    }
+    // Map each table to the first line it consumed, so it lands in place.
+    {
+        let mut seen = 0usize;
+        let mut ti = 0usize;
+        while ti < tables.len() && seen < consumed.len() {
+            if consumed[seen] {
+                table_at[seen] = Some(ti);
+                ti += 1;
+                // advance past this table's own lines
+                while seen < consumed.len() && consumed[seen] { seen += 1; }
+            } else {
+                seen += 1;
+            }
+        }
+    }
+
     let margin = margin(lines);
     let right = right_edge(lines);
     let lists_ok = content.iter().any(|(l, _)| l.text.trim().chars().next()
@@ -348,6 +375,13 @@ pub fn classify(lines: &[Line]) -> Doc {
     let mut seen_numbered = false;
 
     for (i, (l, mk)) in content.iter().enumerate() {
+        if consumed[i] {
+            if let Some(ti) = table_at[i] {
+                blocks.push(Block { kind: Kind::Table, text: String::new(), level: 0, marker: None,
+                                    table: Some(tables[ti].clone()) });
+            }
+            continue;
+        }
         let t = l.text.trim();
         let nxt = content.get(i + 1).map(|(l, _)| l);
         let prior = if i > 0 { Some(&content[i - 1].0) } else { None };
@@ -356,18 +390,18 @@ pub fn classify(lines: &[Line]) -> Doc {
             match split_section(t) {
                 Some((depth, rest)) => {
                     seen_numbered = true;
-                    blocks.push(Block { kind: Kind::Heading, text: rest, level: depth, marker: mk.clone() });
+                    blocks.push(Block { kind: Kind::Heading, text: rest, level: depth, marker: mk.clone(), table: None });
                 }
                 None => {
                     let level = if !seen_numbered && blocks.is_empty() { 0 } else { 1 };
-                    blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level, marker: mk.clone() });
+                    blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level, marker: mk.clone(), table: None });
                 }
             }
             continue;
         }
 
         if is_lettered_section(t) {
-            blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level: 1, marker: mk.clone() });
+            blocks.push(Block { kind: Kind::Heading, text: t.to_string(), level: 1, marker: mk.clone(), table: None });
             continue;
         }
 
@@ -378,16 +412,16 @@ pub fn classify(lines: &[Line]) -> Doc {
             || prior.map(|p| is_indented(p, margin, right)).unwrap_or(false);
         if is_indented(l, margin, right) && neighbour_indented {
             let text = item.unwrap_or_else(|| t.to_string());
-            blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone() });
+            blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone(), table: None });
             continue;
         }
         if let Some(text) = item {
             if bulleted || numbered {
-                blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone() });
+                blocks.push(Block { kind: Kind::ListItem, text, level: 0, marker: mk.clone(), table: None });
                 continue;
             }
         }
-        blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0, marker: mk.clone() });
+        blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0, marker: mk.clone(), table: None });
     }
     Doc { blocks, notes, layout: crate::layout::profile(lines) }
 }

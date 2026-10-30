@@ -335,3 +335,73 @@ fn append(s: &[u8], font: &FontInfo, size: f32, text: &mut String, x: &mut f32) 
         }
     }
 }
+
+/// Every straight line the page draws, in PDF coordinates.
+///
+/// Tables are ruled, and the rules are path operators rather than text. Only
+/// axis-aligned segments survive: curves and rotated rules are ignored rather
+/// than approximated, because a misplaced cell boundary is worse than none.
+pub fn segments(path: &Path) -> Result<Vec<crate::table::Segment>, String> {
+    let doc = Document::load(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
+    let mut out: Vec<crate::table::Segment> = Vec::new();
+
+    for (pno, page_id) in doc.get_pages() {
+        let (_, height) = media_size(&doc, page_id);
+        let content = match doc.get_page_content(page_id) { Ok(c) => c, Err(_) => continue };
+        let ops = match Content::decode(&content) { Ok(c) => c, Err(_) => continue };
+
+        let mut pending: Vec<crate::table::Segment> = Vec::new();
+        let mut cur = (0.0f32, 0.0f32);
+        let mut start = (0.0f32, 0.0f32);
+        let mut commit = |pending: &mut Vec<crate::table::Segment>, out: &mut Vec<crate::table::Segment>| {
+            out.append(pending);
+        };
+        let seg = |a: (f32, f32), b: (f32, f32)| crate::table::Segment {
+            x0: a.0, y0: a.1, x1: b.0, y1: b.1, page: (pno - 1) as usize, page_height: height,
+        };
+
+        for op in &ops.operations {
+            match op.operator.as_str() {
+                "m" => {
+                    if op.operands.len() >= 2 {
+                        cur = (op.operands[0].as_float().unwrap_or(0.0), op.operands[1].as_float().unwrap_or(0.0));
+                        start = cur;
+                    }
+                }
+                "l" => {
+                    if op.operands.len() >= 2 {
+                        let p = (op.operands[0].as_float().unwrap_or(0.0), op.operands[1].as_float().unwrap_or(0.0));
+                        pending.push(seg(cur, p));
+                        cur = p;
+                    }
+                }
+                "re" => {
+                    if op.operands.len() >= 4 {
+                        let x = op.operands[0].as_float().unwrap_or(0.0);
+                        let y = op.operands[1].as_float().unwrap_or(0.0);
+                        let w = op.operands[2].as_float().unwrap_or(0.0);
+                        let h = op.operands[3].as_float().unwrap_or(0.0);
+                        let (a, b, c, d) = (x, y, x + w, y + h);
+                        pending.push(seg((a, b), (c, b)));
+                        pending.push(seg((c, b), (c, d)));
+                        pending.push(seg((c, d), (a, d)));
+                        pending.push(seg((a, d), (a, b)));
+                        cur = (x, y);
+                        start = cur;
+                    }
+                }
+                "h" => {
+                    pending.push(seg(cur, start));
+                    cur = start;
+                }
+                "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" => {
+                    commit(&mut pending, &mut out);
+                    pending.clear();
+                }
+                "n" => pending.clear(),
+                _ => {}
+            }
+        }
+    }
+    Ok(out)
+}
