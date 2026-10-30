@@ -288,11 +288,16 @@ jobs:
   # release; this is the other half.
   publish:
     needs: [macos, windows]
+    # A release is cut from a tag. `workflow_dispatch` exists to exercise the
+    # build and signing path on the default branch, where github.ref is
+    # refs/heads/main — action-gh-release cannot resolve a release for that ref
+    # ("Too many retries") and the job fails after the builds have all passed.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
           merge-multiple: true
@@ -301,7 +306,7 @@ jobs:
           cd artifacts
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           draft: true
           generate_release_notes: true
