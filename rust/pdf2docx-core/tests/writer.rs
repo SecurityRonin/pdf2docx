@@ -22,6 +22,7 @@ fn read_part(path: &PathBuf, part: &str) -> String {
 fn sample() -> Doc {
     Doc {
         notes: Vec::new(),
+        layout: Default::default(),
         blocks: vec![
             Block { kind: Kind::Heading, text: "Quarterly Security Review".into(), level: 0, marker: None },
             Block { kind: Kind::Heading, text: "Scope of the Review".into(), level: 1, marker: None },

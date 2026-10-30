@@ -73,15 +73,17 @@ const DOC_RELS: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>
 </Relationships>"#;
 
-fn styles_xml() -> String {
+fn styles_xml(layout: &crate::layout::Profile) -> String {
     let mut s = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault></w:docDefaults>
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="{SZ}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:line="{LINE}" w:lineRule="atLeast"/></w:pPr></w:pPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>"#,
     );
     // Title: deliberately not numbered, so the first real section is "1".
+    s = s.replace("{SZ}", &format!("{}", (layout.body_size * 2.0).round() as i64));
+    s = s.replace("{LINE}", &format!("{}", (layout.line_pitch * 20.0).round() as i64));
     s.push_str(r#"<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="56"/></w:rPr></w:style>"#);
     // Half-points, descending, all below the Title's 56 (28pt). An earlier
     // formula produced 72 for Heading 1, so a section rendered larger than the
@@ -152,9 +154,13 @@ fn document_xml(doc: &Doc, ids: &[Option<usize>]) -> String {
     for (i, b) in doc.blocks.iter().enumerate() {
         s.push_str(&paragraph(b, ids.get(i).copied().flatten()));
     }
-    s.push_str(
-        r#"<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>"#,
-    );
+    let tw = |pt: f32| (pt * 20.0).round() as i64;
+    let l = doc.layout;
+    s.push_str(&format!(
+        r#"<w:sectPr><w:pgSz w:w="{}" w:h="{}"/><w:pgMar w:top="{}" w:right="{}" w:bottom="{}" w:left="{}" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>"#,
+        tw(l.page_width), tw(l.page_height), tw(l.margin_top), tw(l.margin_right),
+        tw(l.margin_bottom), tw(l.margin_left)
+    ));
     s
 }
 
@@ -176,7 +182,7 @@ pub fn write(doc: &Doc, path: &Path) -> Result<(), String> {
     let (ids, notes) = footnote_ids(doc);
     put(&mut zip, "word/document.xml", document_xml(doc, &ids))?;
     put(&mut zip, "word/footnotes.xml", footnotes_xml(&notes))?;
-    put(&mut zip, "word/styles.xml", styles_xml())?;
+    put(&mut zip, "word/styles.xml", styles_xml(&doc.layout))?;
     put(&mut zip, "word/numbering.xml", numbering_xml().to_string())?;
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())

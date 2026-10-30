@@ -1,5 +1,6 @@
 //! Convert a PDF into a DOCX that carries real Word structure.
 pub mod extract;
+pub mod layout;
 pub mod structure;
 pub mod writer;
 

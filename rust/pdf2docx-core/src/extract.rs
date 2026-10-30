@@ -166,7 +166,7 @@ fn font_info(doc: &Document, resources: &lopdf::Dictionary, name: &str) -> FontI
     info
 }
 
-fn media_height(doc: &Document, page_id: ObjectId) -> f32 {
+fn media_size(doc: &Document, page_id: ObjectId) -> (f32, f32) {
     let dict = doc.get_dictionary(page_id).ok();
     let mb = dict.and_then(|d| d.get(b"MediaBox").ok());
     if let Some(mb) = mb {
@@ -179,14 +179,14 @@ fn media_height(doc: &Document, page_id: ObjectId) -> f32 {
             _ => None,
         };
         if let Some(arr) = arr {
-            if let Some(top) = arr.get(3) {
-                if let Ok(h) = top.as_float() {
-                    return h;
-                }
+            let num = |i: usize| arr.get(i).and_then(|o| o.as_float().ok());
+            if let (Some(x0), Some(y0), Some(x1), Some(y1)) = (num(0), num(1), num(2), num(3)) {
+                // A MediaBox is not required to start at the origin.
+                return ((x1 - x0).abs(), (y1 - y0).abs());
             }
         }
     }
-    842.0
+    (595.28, 841.89)
 }
 
 /// Extract every text line, in reading order.
@@ -195,7 +195,7 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
     let mut out: Vec<Line> = Vec::new();
 
     for (pno, page_id) in doc.get_pages() {
-        let height = media_height(&doc, page_id);
+        let (width, height) = media_size(&doc, page_id);
         let content = match doc.get_page_content(page_id) {
             Ok(c) => c,
             Err(_) => continue,
@@ -241,6 +241,7 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                     bold: font_name.to_lowercase().contains("bold"),
                     page: (pno - 1) as usize,
                     page_height: height,
+                    page_width: width,
                 });
             }
             text.clear();

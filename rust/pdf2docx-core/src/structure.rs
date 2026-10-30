@@ -23,14 +23,16 @@ pub struct Line {
     pub top: f32,
     pub bold: bool,
     pub page: usize,
-    /// Height of the page the line sits on; the note zone is defined from the
-    /// bottom of the page, so a line cannot be classified without it.
+    /// The page the line sits on. The note zone is defined from the bottom of
+    /// the page, and the page size is measured from these, so a line cannot be
+    /// placed or classified without them.
     pub page_height: f32,
+    pub page_width: f32,
 }
 
 impl Line {
     pub fn new(text: &str, size: f32, x0: f32, x1: f32, top: f32) -> Self {
-        Self { text: text.to_string(), size, x0, x1, top, bold: false, page: 0, page_height: 0.0 }
+        Self { text: text.to_string(), size, x0, x1, top, bold: false, page: 0, page_height: 0.0, page_width: 0.0 }
     }
 }
 
@@ -49,6 +51,8 @@ pub struct Doc {
     pub blocks: Vec<Block>,
     /// Numbered notes (`"1" -> "Statement of ..."`), paired by number.
     pub notes: Vec<(String, String)>,
+    /// Page geometry measured from the source.
+    pub layout: crate::layout::Profile,
 }
 
 const TERMINAL: [char; 6] = ['.', ';', ',', ':', '?', '!'];
@@ -257,6 +261,12 @@ fn in_note_zone(l: &Line, body: f32) -> bool {
     l.page_height > 0.0 && l.top > l.page_height * NOTE_ZONE && l.size < body * 0.9
 }
 
+/// Position test alone, without the size test: used where a line must be kept
+/// but must not define the page geometry.
+pub fn note_zone(l: &Line) -> bool {
+    l.page_height > 0.0 && l.top > l.page_height * NOTE_ZONE
+}
+
 /// Re-attach superscript marks to the line they belong to.
 ///
 /// A PDF has no link between a mark and its paragraph — the mark is a separate
@@ -379,5 +389,5 @@ pub fn classify(lines: &[Line]) -> Doc {
         }
         blocks.push(Block { kind: Kind::Body, text: t.to_string(), level: 0, marker: mk.clone() });
     }
-    Doc { blocks, notes }
+    Doc { blocks, notes, layout: crate::layout::profile(lines) }
 }
