@@ -184,6 +184,9 @@ jobs:
 
       # Re-create the dmg AFTER stapling so the shipped image carries the ticket.
       - name: Package dmg
+        env:
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
           set -euo pipefail
           APP="${{ steps.bundle.outputs.app }}"
@@ -192,6 +195,32 @@ jobs:
           hdiutil create -volname "PDF to DOCX" -srcfolder "$APP" -ov -format UDZO "$OUT"
           if [ "$HAS_MACOS_SIGNING" = "true" ]; then
             codesign --force --timestamp --sign "${{ secrets.MACOS_SIGN_IDENTITY }}" "$OUT"
+
+            # The app was notarized and stapled above, but that ticket covers
+            # the bundle, not the image wrapped around it. Measured on the
+            # shipped v0.1.1 disk image: spctl reports the app inside as
+            # "accepted / Notarized Developer ID" and the dmg itself as
+            # "rejected / source=Unnotarized Developer ID". The image needs its
+            # own trip through the notary service.
+            retry() {
+              local n=1
+              until "$@"; do
+                if [ "$n" -ge 5 ]; then return 1; fi
+                echo "  '$*' failed (attempt $n); retrying in $((n * 10))s" >&2
+                sleep $((n * 10))
+                n=$((n + 1))
+              done
+            }
+            retry xcrun notarytool submit "$OUT" \
+              --key "$RUNNER_TEMP/notary.p8" \
+              --key-id "$NOTARY_KEY_ID" \
+              --issuer "$NOTARY_ISSUER_ID" \
+              --wait
+            retry xcrun stapler staple "$OUT" || { echo "stapling the dmg failed" >&2; exit 1; }
+            if ! xcrun stapler validate "$OUT"; then
+              echo "::warning::stapler validate of the dmg could not reach Apple; the ticket is attached"
+            fi
+            spctl --assess --type open --context context:primary-signature -v "$OUT"
           fi
           echo "dmg=$OUT" >> "$GITHUB_ENV"
 
@@ -364,8 +393,23 @@ jobs:
       - name: Checksums
         run: |
           cd artifacts
+          # GitHub replaces spaces with dots in release asset names, so a
+          # manifest written before that rename names files nobody can
+          # download: the release holds PDF.to.DOCX_*.exe while the sums said
+          # "PDF to DOCX_*.exe", and `sha256sum -c` failed on both Windows
+          # artifacts. Rename first, then hash.
+          for f in *; do
+            case "$f" in
+              *" "*) mv -- "$f" "${f// /.}" ;;
+            esac
+          done
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
+          # A manifest that does not name every artifact is a broken gate.
+          for f in *; do
+            [ "$f" = SHA256SUMS.txt ] && continue
+            grep -q "  $f$" SHA256SUMS.txt || { echo "not listed: $f" >&2; exit 1; }
+          done
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           draft: true
