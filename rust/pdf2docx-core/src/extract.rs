@@ -235,6 +235,16 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
         let mut fonts: HashMap<String, FontInfo> = HashMap::new();
         let mut font = FontInfo::default();
         let mut size = 0.0f32;
+        let mut leading = 0.0f32;
+        // The current transformation matrix [a b c d e f]. A page is routinely
+        // wrapped in `q cm ... Q` to place its text block, so raw Tm values are
+        // in that transformed space, not page space.
+        let mut ctm: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut ctm_stack: Vec<[f32; 6]> = Vec::new();
+        let mut word_spacing = 0.0f32;
+        // A Cell so the flush closure can read and reset it while the loop
+        // also updates it; a plain binding would be a borrow conflict.
+        let line_stretch = std::cell::Cell::new(0.0f32);
         let mut x = 0.0f32;
         let mut y = 0.0f32;
         let mut text = String::new();
@@ -250,6 +260,8 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                      size: f32,
                      font_name: &str| {
             let t = text.trim();
+            let stretch = line_stretch.get();
+            line_stretch.set(0.0);
             if *started && !t.is_empty() {
                 out.push(Line {
                     text: t.to_string(),
@@ -261,14 +273,42 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                     page: (pno - 1) as usize,
                     page_height: height,
                     page_width: width,
+                    word_spacing: stretch,
                 });
             }
             text.clear();
-            *started = false;
+            // `started` means "inside a text block", not "has pending text":
+            // clearing it here dropped every line after the first `T*`, because
+            // only `BT` ever set it again.
         };
 
         for op in ops.operations {
             match op.operator.as_str() {
+                "q" => ctm_stack.push(ctm),
+                "Q" => {
+                    if let Some(prev) = ctm_stack.pop() {
+                        ctm = prev;
+                    }
+                }
+                "cm" => {
+                    if op.operands.len() >= 6 {
+                        let m: Vec<f32> = op
+                            .operands
+                            .iter()
+                            .map(|o| o.as_float().unwrap_or(0.0))
+                            .collect();
+                        if m.len() == 6 {
+                            ctm = [
+                                m[0] * ctm[0] + m[1] * ctm[2],
+                                m[0] * ctm[1] + m[1] * ctm[3],
+                                m[2] * ctm[0] + m[3] * ctm[2],
+                                m[2] * ctm[1] + m[3] * ctm[3],
+                                m[4] * ctm[0] + m[5] * ctm[2] + ctm[4],
+                                m[4] * ctm[1] + m[5] * ctm[3] + ctm[5],
+                            ];
+                        }
+                    }
+                }
                 "BT" => {
                     started = true;
                     text.clear();
@@ -300,20 +340,93 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                 }
                 "Tm" => {
                     if op.operands.len() >= 6 {
-                        x = op.operands[4].as_float().unwrap_or(x);
-                        y = op.operands[5].as_float().unwrap_or(y);
+                        let (tx, ty) = (
+                            op.operands[4].as_float().unwrap_or(0.0),
+                            op.operands[5].as_float().unwrap_or(0.0),
+                        );
+                        // Only the translation is applied. A rotated or skewed
+                        // text matrix is left approximated, as documented.
+                        x = tx * ctm[0] + ty * ctm[2] + ctm[4];
+                        y = tx * ctm[1] + ty * ctm[3] + ctm[5];
                         x_start = x;
                     }
                 }
+                // A vertical move starts a new line even inside one BT..ET
+                // block. Flushing on it is what keeps a paragraph from being
+                // read as a single line of several hundred words.
                 "Td" | "TD" => {
                     if op.operands.len() >= 2 {
-                        x += op.operands[0].as_float().unwrap_or(0.0);
-                        y += op.operands[1].as_float().unwrap_or(0.0);
-                        x_start = x;
+                        let dx = op.operands[0].as_float().unwrap_or(0.0);
+                        let dy = op.operands[1].as_float().unwrap_or(0.0);
+                        if dy != 0.0 {
+                            flush(
+                                &mut text,
+                                &mut started,
+                                &mut out,
+                                x_start,
+                                x,
+                                y,
+                                size,
+                                &font.name,
+                            );
+                        }
+                        if op.operator == "TD" {
+                            leading = -dy;
+                        }
+                        x += dx;
+                        y += dy;
+                        if dy != 0.0 {
+                            x_start = x;
+                        }
                     }
                 }
-                "Tj" | "'" | "\"" => {
+                "Tw" => {
+                    if let Some(v) = op.operands.first().and_then(|o| o.as_float().ok()) {
+                        word_spacing = v;
+                    }
+                }
+                "TL" => {
+                    if let Some(v) = op.operands.first().and_then(|o| o.as_float().ok()) {
+                        leading = v;
+                    }
+                }
+                // T* = "next line": the leading move, with no text of its own.
+                "T*" => {
+                    flush(
+                        &mut text,
+                        &mut started,
+                        &mut out,
+                        x_start,
+                        x,
+                        y,
+                        size,
+                        &font.name,
+                    );
+                    y -= leading;
+                    x = x_start;
+                }
+                // `'` and `"` move to the next line *and* show text; treating
+                // them as plain Tj joins consecutive lines into one.
+                "'" | "\"" => {
+                    flush(
+                        &mut text,
+                        &mut started,
+                        &mut out,
+                        x_start,
+                        x,
+                        y,
+                        size,
+                        &font.name,
+                    );
+                    y -= leading;
+                    x = x_start;
                     if let Some(Object::String(s, _)) = op.operands.last() {
+                        append(s, &font, size, &mut text, &mut x);
+                    }
+                }
+                "Tj" => {
+                    if let Some(Object::String(s, _)) = op.operands.last() {
+                        line_stretch.set(line_stretch.get().max(word_spacing.abs()));
                         append(s, &font, size, &mut text, &mut x);
                     }
                 }
@@ -321,7 +434,10 @@ pub fn extract(path: &Path) -> Result<Vec<Line>, String> {
                     if let Some(Object::Array(items)) = op.operands.first() {
                         for it in items {
                             match it {
-                                Object::String(s, _) => append(s, &font, size, &mut text, &mut x),
+                                Object::String(s, _) => {
+                                    line_stretch.set(line_stretch.get().max(word_spacing.abs()));
+                                    append(s, &font, size, &mut text, &mut x)
+                                }
                                 Object::Integer(n) => {
                                     // A negative adjustment moves the pen forward.
                                     x -= *n as f32 / 1000.0 * size;

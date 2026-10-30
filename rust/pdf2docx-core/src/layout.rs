@@ -17,6 +17,8 @@ pub struct Profile {
     pub body_size: f32,
     /// Baseline-to-baseline distance of body text.
     pub line_pitch: f32,
+    /// True when the source sets lines flush to the right measure.
+    pub justified: bool,
 }
 
 impl Default for Profile {
@@ -30,6 +32,7 @@ impl Default for Profile {
             margin_bottom: 56.7,
             body_size: 11.0,
             line_pitch: 13.2,
+            justified: false,
         }
     }
 }
@@ -37,6 +40,8 @@ impl Default for Profile {
 /// No margin is inferred below this: a heading overhanging into the margin
 /// would otherwise collapse the page geometry to nothing.
 const FLOOR: f32 = 18.0;
+/// How close a line end must be to the measure to count as flush.
+const JUSTIFY_TOL: f32 = 2.0;
 
 fn percentile(mut v: Vec<f32>, p: f32) -> f32 {
     if v.is_empty() {
@@ -130,6 +135,30 @@ pub fn profile(lines: &[Line]) -> Profile {
     let step = percentile(steps, 0.5);
     if step > 0.0 {
         p.line_pitch = step;
+    }
+
+    // Justification is a property of the *set* of lines: a justified block ends
+    // every line but the last of each paragraph on the same measure, so most
+    // lines share a right edge. A ragged block has no shared edge to find.
+    if usable.len() >= 3 {
+        // Direct evidence first: justified text is stretched with `Tw`, so a
+        // run of non-zero word spacing on most lines is the fact itself rather
+        // than an inference from positions. These are also the only documents
+        // where geometry is trustworthy — a base-14 font carries no /Widths,
+        // so `x1` is an estimate there and cannot decide flushness.
+        let stretched = usable
+            .iter()
+            .filter(|l| l.word_spacing.abs() > 0.01)
+            .count();
+        p.justified = if stretched > 0 {
+            stretched * 2 >= usable.len()
+        } else {
+            let flush = usable
+                .iter()
+                .filter(|l| (l.x1 - edge).abs() <= JUSTIFY_TOL)
+                .count();
+            flush * 5 >= usable.len() * 3
+        };
     }
     p
 }

@@ -29,6 +29,10 @@ pub struct Line {
     /// placed or classified without them.
     pub page_height: f32,
     pub page_width: f32,
+    /// Word spacing in force when the text was drawn, in points. Non-zero is
+    /// direct evidence that the line was stretched to the measure, which is
+    /// what justified text is.
+    pub word_spacing: f32,
 }
 
 impl Line {
@@ -43,6 +47,7 @@ impl Line {
             page: 0,
             page_height: 0.0,
             page_width: 0.0,
+            word_spacing: 0.0,
         }
     }
 }

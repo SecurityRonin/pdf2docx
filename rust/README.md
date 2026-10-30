@@ -6,7 +6,7 @@ instead of a Tauri shell plus a 32 MB frozen Python engine.
 Built TDD: every module below began as a failing test.
 
 ```bash
-cargo test          # 44 tests
+cargo test          # 50 tests
 ```
 
 ## What is ported
@@ -15,9 +15,9 @@ cargo test          # 44 tests
 |---|---|---|
 | `numbering` | section numbers stripped from the text and restored by a decimal multilevel list; lettered headings keep their own label | 5 (tests) |
 | `structure` | section numbering → heading levels, digits stripped; lists by indent/bullet/label; lettered sections; body/text discrimination; footnote zone and superscript-marker pairing | 13 |
-| `extract` | PDF text lines via `lopdf`: `Tf`/`Tm`/`Td`/`Tj`/`TJ`, `/Widths` advances, `/ToUnicode` CMaps, bold from the font name | 5 |
+| `extract` | PDF text lines via `lopdf`: `Tf`/`Tm`/`Td`/`T*`/`Tj`/`TJ`, the `q`/`cm`/`Q` transform, `/Widths` advances, `/ToUnicode` CMaps, bold from the font name | 5 |
 | `table` | ruled tables from the page's line work: connected rules → grid → text read by position; bodies of text that enclose no text are not tables | 4 |
-| `layout` | page size, margins, body size and leading measured from the source; margins only where text reaches the edge | 4 |
+| `layout` | page size, margins, body size, leading and justification measured from the source; margins only where text reaches the edge | 4 |
 | `writer` | OOXML package: `Heading 1..6`, `Title`, native bullet numbering, correct size ladder, `footnotes.xml` with real reference runs | 7 |
 | `convert` | PDF → lines → blocks → DOCX | 2 |
 
@@ -32,8 +32,6 @@ OOXML — the string-level tests passed while the size ladder was inverted.
 The Python implementation does substantially more. This is a working vertical
 slice, not parity:
 
-- **justification** — the profile does not record whether the source was
-  justified, so output is left-aligned
 - **font matching and tracking** — no installed-font scan, no metrics fitting
 - **the two modes** — no `semantic` / `faithful` split; output is single-mode
 - **numbering restarts** — a list that restarts mid-document keeps counting
@@ -55,5 +53,7 @@ emitted directly — which is what the Python does anyway.
   behaviour is unmeasured rather than merely imperfect.
 - **Only ruled tables.** A table whose cells are separated by whitespace alone
   has no line work to find and comes through as paragraphs.
+- **Font size is not scaled by the content transform.** Positions are
+  transformed correctly; a `cm` that scales text is not applied to `w:sz`.
 - **One `BT`..`ET` block is one line.** Text drawn with an unusual matrix is
   approximated rather than rejected.

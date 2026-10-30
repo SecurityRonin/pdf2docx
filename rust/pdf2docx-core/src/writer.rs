@@ -115,7 +115,7 @@ fn styles_xml(layout: &crate::layout::Profile) -> String {
     let mut s = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="{SZ}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:line="{LINE}" w:lineRule="atLeast"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="{SZ}"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:line="{LINE}" w:lineRule="atLeast"/>{JC}</w:pPr></w:pPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>"#,
     );
@@ -127,6 +127,14 @@ fn styles_xml(layout: &crate::layout::Profile) -> String {
     s = s.replace(
         "{LINE}",
         &format!("{}", (layout.line_pitch * 20.0).round() as i64),
+    );
+    s = s.replace(
+        "{JC}",
+        if layout.justified {
+            r#"<w:jc w:val="both"/>"#
+        } else {
+            ""
+        },
     );
     s.push_str(r#"<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="56"/></w:rPr></w:style>"#);
     // Half-points, descending, all below the Title's 56 (28pt). An earlier

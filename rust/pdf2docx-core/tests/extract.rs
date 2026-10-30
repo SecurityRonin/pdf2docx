@@ -57,3 +57,41 @@ fn lines_come_back_in_reading_order() {
     let tops: Vec<f32> = lines.iter().map(|l| l.top).collect();
     assert!(tops.windows(2).all(|w| w[0] <= w[1]), "{tops:?}");
 }
+
+/// A PDF may break lines inside one `BT`..`ET` block with `T*`, `'` or `"`.
+/// Not handling those collapses a whole paragraph into a single line — which
+/// silently destroys every line-based decision made downstream.
+#[test]
+fn a_line_break_inside_one_text_block_still_ends_the_line() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/justified.pdf");
+    let lines = extract(&p).expect("extract failed");
+    assert!(
+        lines.len() > 5,
+        "collapsed into {} line(s): {:?}",
+        lines.len(),
+        lines
+            .iter()
+            .map(|l| l.text.chars().take(20).collect::<String>())
+            .collect::<Vec<_>>()
+    );
+    let tops: std::collections::BTreeSet<i32> =
+        lines.iter().map(|l| l.top.round() as i32).collect();
+    assert!(tops.len() > 5, "only {} distinct baselines", tops.len());
+}
+
+/// Platypus, Word and LaTeX commonly wrap the page in `q cm ... Q` to place
+/// the text block. Ignoring that transform leaves every line at x=0, so the
+/// measured margins are wrong and the DOCX reflows the document.
+#[test]
+fn a_translated_text_block_keeps_its_real_position() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/justified.pdf");
+    let lines = extract(&p).expect("extract failed");
+    let left = lines.iter().map(|l| l.x0).fold(f32::INFINITY, f32::min);
+    // 76, not 70: Platypus adds 6pt of frame padding inside the 70pt margin,
+    // so 76 is where the glyphs actually start. The point of the assertion is
+    // that the transform was applied at all — without it the edge is 0.
+    assert!(
+        (left - 76.0).abs() < 2.0,
+        "left edge {left}, expected the text block at 76pt"
+    );
+}
